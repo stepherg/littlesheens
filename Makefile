@@ -31,7 +31,7 @@ SPEC_JSS = $(patsubst $(SPEC_DIR)/%.yaml,$(SPEC_DIR)/%.js,$(SPEC_YAMLS))
 EXECUTABLES = demo sheensio driver register_test
 
 # Default target
-all: $(LIB_SOS) $(EXECUTABLES)
+all: $(DUK) $(LIB_SOS) $(EXECUTABLES)
 
 # --- Duktape Download and Setup ---
 $(DUK):
