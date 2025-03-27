@@ -124,7 +124,7 @@ free(dst);
 
 ## Building and Running
 
-The default target in the Makefile will automatically compile the `.c` files into a shared librarys (`.so`).
+The default target in the Makefile will automatically compile the `.c` files into a shared libraries (`.so`).
 
 ```bash
 [littlesheens]$ make
