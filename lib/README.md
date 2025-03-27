@@ -100,6 +100,20 @@ var result = double_number(5); // Calls the C function, returns 10
 print("Doubled value: " + result);
 ```
 
+In a C file:
+```c
+size_t dst_limit = 128 * 1024;
+char *dst = (char *)malloc(dst_limit);
+char *js_code =
+    "print('double_number(5) = ' + (typeof double_number === 'function' ? double_number(5) : 'not found'));\n";
+
+int rc = mach_eval(js_code, dst, dst_limit);
+if (rc != 0) {
+    printf("mach_eval() failed, rc: %d\n", rc);
+}
+free(dst);
+```
+
 ## Tips and Best Practices
 
 - **Error Handling**: Use `duk_error` to report argument errors or runtime issues, improving JavaScript-side debugging.
