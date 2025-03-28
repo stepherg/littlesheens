@@ -30,8 +30,30 @@ For now, running the demo requires two tools written in
 demo.  (We'll remove this unncessary dependency soon.)
 
 ```Shell
-go get github.com/bronze1man/yaml2json
-go get github.com/tdewolff/minify/cmd/minify
+go install github.com/bronze1man/yaml2json@latest
+go install github.com/tdewolff/minify/cmd/minify@latest
+```
+
+If Go isn't already in your default path, you can do the following to add it to your current shell
+
+```Shell
+export PATH=$PATH:$(go env GOPATH)/bin
+```
+
+To add it to your user's default path:
+
+```Shell
+echo $PATH:$(go env GOPATH)/bin >> <location of .profile or .zprofile for MAC>
+
+# Usually .profile on Linux
+echo $PATH:$(go env GOPATH)/bin >> ~/.profile
+
+# Usually .zprofile on a Mac
+echo $PATH:$(go env GOPATH)/bin >> ~/.zprofile
+
+```
+
+```Shell
 make demo
 ./demo
 ```
