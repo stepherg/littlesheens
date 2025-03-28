@@ -13,7 +13,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <duk_print_alert.h>
+#if OSX
+#include <sys/errno.h>
+#else
 #include <asm/errno.h>
+#endif
 #include <errno.h>
 
 #include <stdlib.h>
@@ -155,6 +159,11 @@ int mach_open() {
       return MACH_SAD;
    }
 
+   //
+   //
+   // Installs all combined supporting JS files (step, sandbox, driver, prof, match, etc)
+   //
+   //
    src = mach_machines_js();
    if (src == NULL) {
       return MACH_SAD;
@@ -174,6 +183,11 @@ int mach_open() {
 
    duk_print_alert_init(ctx->dctx, 0);
 
+   //
+   //
+   // Register our exported C methods
+   //
+   //
    // push util c functions into js vm
    duk_push_c_function(ctx->dctx, providerer, 2);
    duk_put_global_string(ctx->dctx, "provider");
@@ -181,9 +195,15 @@ int mach_open() {
    duk_push_c_function(ctx->dctx, sandbox, 1);
    duk_put_global_string(ctx->dctx, "sandbox");
 
+   //
+   //
+   // Register otherexported C methods
+   //
+   //
    register_c_funcs(ctx);
 
    // eval default js libraries
+   printf("eval default js libraries\n");
    rc = mach_eval(src, dst, (int)dst_limit);
    free(dst);
 
@@ -228,12 +248,14 @@ int evalf(char *fmt, ...) {
    va_start(args, fmt);
    size_t buf_limit = 16 * 1024;
    char *buf = (char *)malloc(buf_limit);
+   JSON dst= (char*) malloc(buf_limit);
 
    int wrote = vsnprintf(buf, buf_limit, fmt, args);
    if (buf_limit <= wrote) {
       free(buf);
       return MACH_TOO_BIG;
    }
+#if 0
    int rc = duk_peval_string(ctx->dctx, buf);
    va_end(args);
    free(buf);
@@ -246,6 +268,12 @@ int evalf(char *fmt, ...) {
       rc = MACH_OKAY;
    }
    duk_pop(ctx->dctx);
+#else
+  int rc = mach_eval(buf, dst, buf_limit); 
+  va_end(args);
+  free(buf);
+  free(dst); // discard output
+#endif
 
    return rc;
 }
@@ -308,7 +336,7 @@ int mach_enable_spec_cache(int enable) {
 
 /* API: mach_clear_spec_cache empties the cache (and resets cache
    statistics). */
-int mach_clear_spec_cache(int enable) {
+int mach_clear_spec_cache() {
    return evalf("SpecCache.clear()");
 }
 
