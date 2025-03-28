@@ -53,8 +53,17 @@ echo $PATH:$(go env GOPATH)/bin >> ~/.zprofile
 
 ```
 
+Building on Linux
+
 ```Shell
-make demo
+make
+./demo
+```
+
+Building on a MAC 
+
+```Shell
+make -f Makefile.osx
 ./demo
 ```
 
