@@ -5,7 +5,7 @@ add_library(duktape
             src/duktape.c
             extras/print-alert/duk_print_alert.c)
 
-set_target_properties(duktape PROPERTIES VERSION 2.2.0)
+set_target_properties(duktape PROPERTIES VERSION 2.7.0)
 
 target_include_directories(duktape
                            PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>

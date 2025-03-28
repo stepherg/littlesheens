@@ -25,8 +25,8 @@ else()
 endif()
 
 ExternalProject_Add(duktape-ext
-    URL https://github.com/svaarala/duktape-releases/raw/master/duktape-2.2.0.tar.xz
-    URL_MD5 0f7c9fac5547f7f3fc1c671fc90b2ccf
+    URL https://github.com/svaarala/duktape-releases/raw/master/duktape-2.7.0.tar.xz
+    URL_MD5 b3200b02ab80125b694bae887d7c1ca6
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/duktape"
 
     UPDATE_COMMAND ""
