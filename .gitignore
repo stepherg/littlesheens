@@ -16,7 +16,7 @@ build
 machines_js.c
 duktape-*
 crew.json
-match_test.results.json
+*_test.results.json
 sheensio-demo.input
 sheensio-demo.output
 node-littlesheens
