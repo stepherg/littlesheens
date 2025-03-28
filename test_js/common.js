@@ -37,6 +37,23 @@ function run_tests(tests) {
       }
       acc.push(result);
 
+      try {
+         // Benchmark
+         var rounds = 1000;
+         result.bench = {rounds: null, elapsed: null};
+         var then = Date.now();
+         for (var b = 0; b < rounds; b++) {
+            test.f(test.i);
+         }
+         result.bench.rounds = rounds;
+         result.bench.elapsed = Date.now() - then;
+      } catch (e) {
+      }
+
+      if (test.benchmarkOnly) {
+         continue;
+      }
+
       if (type(test.f) === 'function') {
          var bss = test.f(test.i);
          result.bss = bss;

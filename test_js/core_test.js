@@ -74,56 +74,56 @@ print(x, "\n");    // [ 1, 2, 3, 4, 5 ]
 // w - want
 var tests = [
    {
-      "title": "type",
+      "title": "type(function)",
       "f": type,
       "i": type,
       "w": 'function',
       "doc": ""
    },
    {
-      "title": "type",
+      "title": "type(string)",
       "f": type,
       "i": "test",
       "w": 'string',
       "doc": ""
    },
    {
-      "title": "type",
+      "title": "type(array)",
       "f": type,
       "i": [1,2,3],
       "w": 'array',
       "doc": ""
    },
    {
-      "title": "type",
+      "title": "type(boolean)",
       "f": type,
       "i": true,
       "w": 'boolean',
       "doc": ""
    },
    {
-      "title": "type",
+      "title": "type(int)",
       "f": type,
       "i": 1,
       "w": 'int',
       "doc": ""
    },
    {
-      "title": "type",
+      "title": "type(double)",
       "f": type,
       "i": 1.1,
       "w": 'double',
       "doc": ""
    },
    {
-      "title": "Test 'shift'ing function",
+      "title": "Test 'shift'ing function with [1,2,3]",
       "f": shift,
       "i": [1,2,3],
       "w": [1],
       "doc": ""
    },
    {
-      "title": "Test 'shift'ing function",
+      "title": "Test 'shift'ing function with null",
       "f": shift,
       "i": null,
       "w": null,
