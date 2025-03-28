@@ -11,7 +11,7 @@ cat<<EOF > crew.json
    "turnstile":{"spec":"specs/turnstile.js","node":"locked","bs":{}}}}
 EOF
 
-cat<<EOF | ./sheensio
+cat<<EOF | ./sheensio -c
 {"double":1}
 {"double":10}
 {"double":100}
