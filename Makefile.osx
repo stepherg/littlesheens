@@ -4,7 +4,7 @@ AR = ar
 ARFLAGS = rcs
 
 # Compiler flags
-CFLAGS = -Wall -std=c99 -fno-asynchronous-unwind-tables -ffunction-sections -I. -fPIC -DOSX
+CFLAGS = -Wall -std=c99 -fno-asynchronous-unwind-tables -ffunction-sections -I. -fPIC -DOSX -Wno-unused-but-set-variable
 # Debug flags (commented out): CFLAGS = -Wall -std=c99 -fno-omit-frame-pointer -fno-inline -fvar-tracking -O0 -g3 -ggdb3 -I. -fPIC
 LDFLAGS = -lm -ldl
 
