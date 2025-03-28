@@ -13,5 +13,5 @@ RUN echo "GOROOT=${GOPATH}"
 
 # RUN ls ${CODE_DIR}
 
-RUN go get github.com/bronze1man/yaml2json
-RUN go get github.com/tdewolff/minify/cmd/minify
+RUN go install github.com/bronze1man/yaml2json@latest
+RUN go install github.com/tdewolff/minify/cmd/minify@latest
