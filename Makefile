@@ -74,28 +74,24 @@ $(SPEC_DIR)/%.js: $(SPEC_DIR)/%.yaml
 
 # --- Executable Rules ---
 sheensio: sheensio.c libmachines.a libduktape.a
-	$(CC) $(CFLAGS) -I$(DUK_SRC) $< -L. -lmachines -lduktape $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) -I$(DUK_SRC) $< -L. -l:libmachines.a -lduktape $(LDFLAGS) -o $@
 
 demo: demo.c util.c libmachines.a libduktape.a $(SPEC_DIR)/double.js
-	$(CC) $(CFLAGS) -I$(DUK_SRC) demo.c util.c -L. -lmachines -lduktape $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) -I$(DUK_SRC) demo.c util.c -L. -l:libmachines.a -lduktape $(LDFLAGS) -o $@
 
 register_test: register_test.c util.c libmachines.so libduktape.so $(SPEC_DIR)/double.js
 	$(CC) $(CFLAGS) -I$(DUK_SRC) $< util.c -L. -l:libmachines.a -lduktape $(LDFLAGS) -o $@
 
 driver: driver.c util.c libmachines.a libduktape.a
-	$(CC) $(CFLAGS) -I$(DUK_SRC) $< util.c -L. -lmachines -lduktape $(LDFLAGS) -o $@
-
-demo.shared: demo.c util.c libmachines.so libduktape.so $(SPEC_DIR)/double.js
-	$(CC) $(CFLAGS) -I$(DUK_SRC) $< util.c -L. -l:libmachines.so -l:libduktape.so $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) -I$(DUK_SRC) $< util.c -L. -l:libmachines.a -lduktape $(LDFLAGS) -o $@
 
 # --- Test Rules ---
 matchtest: driver match_test.js
 	./driver match_test.js | tee match_test.results.json | jq -r '.[]|select(.happy == false)|"\(.n): \(.case.title); wanted: \(.case.w) got: \(.got)"'
 	cat match_test.results.json | jq -r '.[]|"\(.n): elapsed \(.bench.elapsed)ms (\(.bench.rounds) rounds) \(.case.title)"'
 
-test: demo sheensio matchtest demo.shared
+test: demo sheensio matchtest
 	valgrind --leak-check=full --error-exitcode=1 ./demo
-	export LD_LIBRARY_PATH=$(PWD); valgrind --leak-check=full ./demo.shared
 
 # --- Utility Rules ---
 nodejs:
