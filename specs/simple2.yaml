@@ -1,0 +1,52 @@
+name: simple
+doc: |-
+  A machine that double numbers and protests requests for doubling non-numbers.
+
+parsepatterns: true
+nodes:
+  start: 
+    branching: 
+      branches:
+          target: stop
+  stop:
+    type: message
+    branches:
+      - pattern: |
+          {"input":"simple"}
+        target: start
+    action: 
+      - interpreter: ecmascript-5.1
+        source: |-
+          actions = []
+          if ("{{faultSound}}" != "") {
+                actions.push({
+                  "jsonrpc": "2.0",
+                  "method": "executeDeviceResource",
+                
+                "id": "{{sensorId}}-{{chimeId}}",
+                "params": {
+                  "uri": "/{{chimeId}}/ep/1/r/playUrl",
+                  "arg": "{{faultSound}}:options?ledPattern=pattern2"
+                }
+                });
+          }
+          if ("{{leftFaultedSound}}" != "" && "{{leftFaultedMinutes}}" > 0) {
+            actions.push({
+              "jsonrpc": "2.0",
+              "method": "makeTimerAction",
+              "params": {
+                "timerId": "leftFaulted-{{sensorId}}-{{chimeId}}",
+                "in": "{{leftFaultedMinutes}}" * 60
+                }
+            });
+          _.bindings.leftFaultedTimerActive = true;
+          }
+          _.out(actions);
+          return _.bindings;
+      - interpreter: ecmascript
+        source: |-
+          _.out({data: 1111111111111111111111111111111111111111111111111111});
+          return _.bindings;
+    branching: 
+      branches:
+          target: start

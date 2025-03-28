@@ -19,7 +19,7 @@ nodes:
             var bs = _.bindings;
             var f = parseFloat(bs["?x"]);
             if (isNaN(f)) {
-               return nil;
+              return "";
             }
             bs["?x"] = f;
             return bs;
@@ -41,17 +41,20 @@ nodes:
     action:
       interpreter: ecmascript
       source: |-
-        _.out({bad: _.bindings["?x"]});
+        _.out({"bad value": _.bindings["?x"]});
         return _.bindings;
     branching:
       branches:
         - target: cleanup
   cleanup:
-    action:
-      interpreter: ecmascript
-      source: |-
-        delete _.bindings["?x"];
-        return _.bindings;
+    actions:
+      - type: log
+        text: |-
+           cleaning up temporary states
+      - interpreter: ecmascript
+        source: |-
+          delete _.bindings["?x"];
+          return _.bindings;
     branching:
       branches:
         - target: listen

@@ -1,0 +1,38 @@
+name: simple
+doc: 
+parsepatterns: true
+nodes:
+  start:
+    branching:
+      branches:
+        - target: stop
+  stop:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"input":"simple", "test":"?b"}
+          target: up
+  up:
+    branching:
+      branches:
+        - target: stop
+    action:
+      interpreter: ecmascript-5.1
+      source: |-
+        var bs = _.bindings;
+        actions = []
+        if (bs["?b"]) {
+           actions.push({
+             "jsonrpc": "2.0",
+             "method": "executeDeviceResource",
+        
+           "id": bs['sensorId']+"-"+bs['chimeId'],
+           "params": {
+             "uri": "/"+bs['chimeId']+"/ep/1/r/playUrl",
+             "arg": bs['faultSound']+":options?ledPattern=pattern2"
+           }
+           });
+        }
+        _.out(actions);
+        return _.bindings;

@@ -1,0 +1,32 @@
+name: tlatch
+doc: https://www.geeksforgeeks.org/latches-in-digital-logic/#t-latch
+parsepatterns: true
+nodes:
+  start:
+    branching:
+      branches:
+        - target: locked
+  locked:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"input":"tick"}
+          target: unlocked
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"output":"unlocking"});
+        return _.bindings;
+  unlocked:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"input":"tick"}
+          target: locked
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"output":"locking"});
+        return _.bindings;

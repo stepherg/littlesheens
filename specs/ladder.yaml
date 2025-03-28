@@ -1,0 +1,66 @@
+name: ladder
+doc: null
+parsepatterns: true
+nodes:
+  start:
+    branching:
+      branches:
+        - target: stop
+  stop:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"input":"up"}
+          target: up
+        - pattern: |
+            {"input":"down"}
+          target: down
+        - pattern: |
+            {"input":"fall"}
+          target: fall
+  up:
+    branching:
+      branches:
+        - target: stop
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.bindings.rung++;
+        _.out({"output":"climbing"});
+        return _.bindings;
+  down:
+    branching:
+      branches:
+        - target: stop
+    action:
+      interpreter: ecmascript
+      source: |-
+        var bs = _.bindings;
+        if (bs.rung > 0) {
+          bs.rung--;
+          _.out({"output":"descending"});
+        } else {
+          _.out({"output":"at bottom"});
+        }
+        return _.bindings;
+  fall:
+    branching:
+      branches:
+        - guard:
+            interpreter: ecmascript
+            source: |-
+              var bs = _.bindings;
+              if (bs.rung > 0) {
+                return "";
+              }
+              return bs;
+          target: stop
+        - target: fall
+    action:
+      interpreter: ecmascript
+      source: |-
+        var bs = _.bindings;
+        bs.rung--;
+        _.out({"output":"falling"});
+        return _.bindings;

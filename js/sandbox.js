@@ -15,60 +15,61 @@
 //
 // Returns {bs: BS, emitted: MESSAGES}.
 function sandboxedAction(ctx, bs, src) {
-    // This function calls a (presumably primitive) 'sandbox' function
-    // to do the actual work.  That function is probably in
-    // 'machines.c'.
+   // This function calls a (presumably primitive) 'sandbox' function
+   // to do the actual work.  That function is probably in
+   // 'machines.c'.
 
-    // ToDo: Different env for guards: no emitting.
-    Times.tick("sandbox");
+   // ToDo: Different env for guards: no emitting.
+   Times.tick("sandbox");
 
-    if (!bs) {
-	bs = {};
-    }
+   if (!bs) {
+      bs = {};
+   }
 
-    var bs_js = JSON.stringify(bs);
-    
-    var code = "\n" +
-	"var emitting = [];\n" + 
-	"var env = {\n" + 
-	"  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
-	"  out: function(x) { emitting.push(x); }\n" + 
-        "}\n" + 
-	"\n" + 
-	"var bs = (function(_) {\n" + src + "\n})(env);\n";
+   var bs_js = JSON.stringify(bs);
 
-    // The following conditional checks for 'safeEval', might have
-    // been defined by https://www.npmjs.com/package/safe-eval.  That
-    // 'safeEval' wants an expression, while the Duktape-based sandbox
-    // just takes a block.
-    if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
-	code += "JSON.stringify({bs: bs, emitted: emitting});\n";
-    } else {
-	code = "function() {\n" + code + "\n" +
-	    "return JSON.stringify({bs: bs, emitted: emitting});\n" +
-	    "}();\n";
-    }
+   var code = "\n" +
+      "var emitting = [];\n" + 
+      "var env = {\n" + 
+      "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
+      "  target: function(x) { console.log(x); },\n" + 
+      "  out: function(x) { emitting.push(x); }\n" + 
+      "}\n" + 
+      "\n" + 
+      "var bs = (function(_) {\n" + src + "\n})(env);\n";
 
-    try {
-	var result_js = sandbox(code);
-	try {
-	    return JSON.parse(result_js);
-	} catch (e) {
-	    throw e + " on result parsing of '" + result_js + "'";
-	}
-    } catch (e) {
-	print("walk action sandbox error", e);
-	// Make a binding for the error so that branches could deal
-	// with the error.
-	//
-	// ToDo: Do not overwrite?
-	//
-	// ToDo: Implement the spec switch that enabled
-	// branching-based action error-handling.
-	bs.error = e;
-	return {bs: bs, error: e};
-    } finally {
-        Times.tock("sandbox");
-    }
+   // The following conditional checks for 'safeEval', might have
+   // been defined by https://www.npmjs.com/package/safe-eval.  That
+   // 'safeEval' wants an expression, while the Duktape-based sandbox
+   // just takes a block.
+   if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
+      code += "JSON.stringify({bs: bs, emitted: emitting});\n";
+   } else {
+      code = "function() {\n" + code + "\n" +
+         "return JSON.stringify({bs: bs, emitted: emitting});\n" +
+         "}();\n";
+   }
+
+   try {
+      var result_js = sandbox(code);
+      try {
+         return JSON.parse(result_js);
+      } catch (e) {
+         throw e + " on result parsing of '" + result_js + "'";
+      }
+   } catch (e) {
+      print("walk action sandbox error", e);
+      // Make a binding for the error so that branches could deal
+      // with the error.
+      //
+      // ToDo: Do not overwrite?
+      //
+      // ToDo: Implement the spec switch that enabled
+      // branching-based action error-handling.
+      bs.error = e;
+      return {bs: bs, error: e};
+   } finally {
+      Times.tock("sandbox");
+   }
 }
 
