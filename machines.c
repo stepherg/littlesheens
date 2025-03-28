@@ -203,7 +203,7 @@ int mach_open() {
    register_c_funcs(ctx);
 
    // eval default js libraries
-   printf("eval default js libraries\n");
+   //printf("eval default js libraries\n");
    rc = mach_eval(src, dst, (int)dst_limit);
    free(dst);
 
@@ -497,7 +497,7 @@ static void load_and_register_functions(Ctx *ctx, const char *path) {
       for (DukFunctionRegistration *f = funcs; f->name != NULL; f++) {
          duk_push_c_function(ctx->dctx, f->func, f->nargs);
          duk_put_global_string(ctx->dctx, f->name);
-         printf("Registered %s from %s\n", f->name, path);
+         //printf("Registered %s from %s\n", f->name, path);
       }
       free(funcs); // reg_func allocates memory
    }
