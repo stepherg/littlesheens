@@ -21,3 +21,4 @@ sheensio-demo.input
 sheensio-demo.output
 node-littlesheens
 register_test
+*.dylib

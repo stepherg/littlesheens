@@ -23,7 +23,7 @@ SPEC_DIR = specs
 # Source and output files
 LIB_SRCS = $(wildcard $(LIB_DIR)/*.c)
 LIB_SOS = $(patsubst $(LIB_DIR)/%.c,$(OUT_DIR)/%.so,$(LIB_SRCS))
-LIB_SCRIPTS = $(wildcard $(LIB_DIR)/*.js)
+JS_SCRIPTS = $(wildcard $(JS_DIR)/*.js) $(wildcard $(LIB_DIR)/*.js)
 SPEC_YAMLS = $(wildcard $(SPEC_DIR)/*.yaml)
 SPEC_JSS = $(patsubst $(SPEC_DIR)/%.yaml,$(SPEC_DIR)/%.js,$(SPEC_YAMLS))
 
@@ -60,7 +60,7 @@ $(OUT_DIR)/%.so: $(LIB_DIR)/%.c libduktape.so
 	$(CC) $(CFLAGS) -I$(DUK_SRC) -shared -L. -l:libduktape.so $< -o $@
 
 # --- JavaScript and Embedded Files ---
-machines.js: $(JS_DIR)/match.js $(JS_DIR)/sandbox.js $(JS_DIR)/step.js $(JS_DIR)/prof.js driver.js $(LIB_SCRIPTS)
+machines.js: driver.js $(JS_SCRIPTS)
 	cat $^ > $@
 
 machines_js.c: machines.js

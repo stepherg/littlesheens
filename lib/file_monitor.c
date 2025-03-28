@@ -1,3 +1,9 @@
+
+#include <duktape.h>
+#include <register.h>
+
+#ifndef OSX
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -7,8 +13,6 @@
 #include <errno.h>
 #include "util.h"
 #include <pthread.h>
-#include <duktape.h>
-#include <register.h>
 
 #define EVENT_SIZE (sizeof(struct inotify_event))
 #define BUF_LEN (1024 * (EVENT_SIZE + 16))
@@ -154,3 +158,23 @@ DukFunctionRegistration *register_functions(void) {
    funcs[1] = (DukFunctionRegistration){ NULL, NULL, 0 };
    return funcs;
 }
+#else
+
+//
+// dummy C function so the loader won't complain when running on OSX
+//
+duk_ret_t native_do_nothing(duk_context *ctx) {
+   return 1;
+}
+
+//
+// Registration function
+//
+DukFunctionRegistration *register_functions(void) {
+   DukFunctionRegistration *funcs = malloc(2 * sizeof(DukFunctionRegistration));
+   funcs[0] = (DukFunctionRegistration){ "nothing", native_do_nothing, 1 };
+   funcs[1] = (DukFunctionRegistration){ NULL, NULL, 0 };
+   return funcs;
+}
+
+#endif

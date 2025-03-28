@@ -23,12 +23,12 @@ SPEC_DIR = specs
 # Source and output files
 LIB_SRCS = $(wildcard $(LIB_DIR)/*.c)
 LIB_SOS = $(patsubst $(LIB_DIR)/%.c,$(OUT_DIR)/%.so,$(LIB_SRCS))
-LIB_SCRIPTS = $(wildcard $(JS_DIR)/*.js)
+JS_SCRIPTS = $(wildcard $(JS_DIR)/*.js) $(wildcard $(LIB_DIR)/*.js)
 SPEC_YAMLS = $(wildcard $(SPEC_DIR)/*.yaml)
 SPEC_JSS = $(patsubst $(SPEC_DIR)/%.yaml,$(SPEC_DIR)/%.js,$(SPEC_YAMLS))
 
 # Main targets
-EXECUTABLES = demo sheensio driver 
+EXECUTABLES = demo sheensio driver register_test
 
 # Default target
 all: $(DUK) $(LIB_SOS) $(EXECUTABLES)
@@ -62,7 +62,7 @@ $(OUT_DIR)/%.so: $(LIB_DIR)/%.c libduktape.so
 	$(CC) $(CFLAGS) -I$(DUK_SRC) -shared -L. -lduktape $< -o $@
 
 # --- JavaScript and Embedded Files ---
-machines.js: driver.js $(LIB_SCRIPTS)
+machines.js: driver.js $(JS_SCRIPTS)
 	cat $^ > $@
 
 machines_js.c: machines.js
@@ -82,7 +82,7 @@ sheensio: sheensio.c libmachines.a libduktape.a
 demo: demo.c util.c libmachines.a libduktape.a $(SPEC_DIR)/double.js
 	$(CC) $(CFLAGS) -I$(DUK_SRC) demo.c util.c -L. -lmachines -lduktape $(LDFLAGS) -o $@
 
-demo.shared: demo.c util.c libmachines.so libduktape.so $(SPEC_DIR)/double.js
+register_test: register_test.c util.c libmachines.a libduktape.a $(SPEC_DIR)/double.js
 	$(CC) $(CFLAGS) -I$(DUK_SRC) $< util.c -L. -lmachines -lduktape $(LDFLAGS) -o $@
 
 driver: driver.c util.c libmachines.a libduktape.a
@@ -95,7 +95,6 @@ matchtest: driver match_test.js
 
 test: demo sheensio matchtest 
 	valgrind --leak-check=full --error-exitcode=1 ./demo
-	export LD_LIBRARY_PATH=$(PWD); valgrind --leak-check=full ./demo.shared
 
 # --- Utility Rules ---
 nodejs:

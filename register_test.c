@@ -8,8 +8,6 @@
 #include <time.h>
 
 int main(int argc, char **argv) {
-   const char *filename = "/tmp/test.txt";
-   FILE *file;
 
    mach_set_ctx(mach_make_ctx());
 
@@ -43,6 +41,10 @@ int main(int argc, char **argv) {
    if (rc != 0) {
       printf("mach_eval() failed, rc: %d\n", rc);
    }
+
+#ifndef OSX
+   const char *filename = "/tmp/test.txt";
+   FILE *file;
 
    // Make sure the file exist before starting the monitoring test
    file = fopen(filename, "w");
@@ -78,6 +80,9 @@ int main(int argc, char **argv) {
    sleep(3);
 
    fclose(file);
+
+#endif
+
    free(dst);
    mach_close();
 
