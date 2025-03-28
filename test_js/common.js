@@ -43,7 +43,8 @@ function run_tests(tests) {
          result.bench = {rounds: null, elapsed: null};
          var then = Date.now();
          for (var b = 0; b < rounds; b++) {
-            test.f(test.i);
+            var temp_params = Object.assign({}, test.i);
+            test.f(temp_params);
          }
          result.bench.rounds = rounds;
          result.bench.elapsed = Date.now() - then;
