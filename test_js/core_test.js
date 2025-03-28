@@ -73,36 +73,62 @@ print(x, "\n");    // [ 1, 2, 3, 4, 5 ]
 // w - want
 // w - want
 var tests = [
-    {
-	"title": "shifting",
-   "f": shift,
-	"i": [1,2,3],
-	"w": [{"?likes":"tacos"}],
-	"doc": ""
-    }
+   {
+      "title": "type",
+      "f": type,
+      "i": type,
+      "w": 'function',
+      "doc": ""
+   },
+   {
+      "title": "type",
+      "f": type,
+      "i": "test",
+      "w": 'string',
+      "doc": ""
+   },
+   {
+      "title": "type",
+      "f": type,
+      "i": [1,2,3],
+      "w": 'array',
+      "doc": ""
+   },
+   {
+      "title": "type",
+      "f": type,
+      "i": true,
+      "w": 'boolean',
+      "doc": ""
+   },
+   {
+      "title": "type",
+      "f": type,
+      "i": 1,
+      "w": 'int',
+      "doc": ""
+   },
+   {
+      "title": "type",
+      "f": type,
+      "i": 1.1,
+      "w": 'double',
+      "doc": ""
+   },
+   {
+      "title": "Test 'shift'ing function",
+      "f": shift,
+      "i": [1,2,3],
+      "w": [1],
+      "doc": ""
+   },
+   {
+      "title": "Test 'shift'ing function",
+      "f": shift,
+      "i": null,
+      "w": null,
+      "doc": ""
+   }
 ]
 
-var acc = [];
-
-for (var i = 0; i < tests.length; i++) {
-    var test = tests[i];
-    var result = {"n": i+1, "case": test};
-    if (test.b === undefined) {
-       test.b = {};
-    }
-    acc.push(result);
-
-    if (type(test.f) === 'function') {
-       var bss = test.f(test.i);
-    }
-
-    result.happy = true;
-    result.got = {};
-    result.wanted= {};
-   //result.bss = bss;
-   //result.happy = canonicalBss(bss) == canonicalBss(test.w);
-   //result.got = canonicalBss(bss);
-   //result.wanted = canonicalBss(test.w);
-}
-
-JSON.stringify(acc);
+run_tests(tests);
