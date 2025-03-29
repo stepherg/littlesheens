@@ -116,19 +116,33 @@ var tests = [
       "doc": ""
    },
    {
-      "title": "Test 'shift'ing function with [1,2,3]",
+      "title": "shift([1,2,3])",
       "f": shift,
       "i": [1,2,3],
       "w": [1],
       "doc": ""
    },
    {
-      "title": "Test 'shift'ing function with null",
+      "title": "shift(null)",
       "f": shift,
       "i": null,
       "w": null,
       "doc": ""
+   },
+   {
+      "title": "substr('The black cat climbed the green tree, 4, 5')",
+      "f": substr,
+      "args": ["The black cat climbed the green tree", 4, 5],
+      "w": "black",
+      "doc": ""
    }
+//print(substr(s, 4, 5));      // black
+//var s = "The black cat climbed the green tree";
+//print(substr(s, 4, 5));      // black
+//print(substr(s, 4, -11));    // black cat climbed the
+//print(substr(s, 14));        // climbed the green tree
+//print(substr(s, -4));        // tree
+//print(substr(s, -4, 2));     // tr
 ]
 
 run_tests(tests);
