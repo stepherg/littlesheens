@@ -54,29 +54,33 @@ shift = function(arr) {
 
 //Returns the last value added to the array.
 unshift = function(arr) { 
-   print(arguments.length)
    if (!arr) return null;
    if (!Array.isArray(arr)) return null;
 
    const originalLength = arr.length;
    const numElements = (arguments.length-1);
 
-   print(originalLength, numElements);
+   // copy the original array
+   var copy = Object.assign({}, arr);
 
+   // expand the original array
    for (var i = 0; i < numElements; i++) {
       arr.push(0);
    }
 
+   // shift originals in
    for (var i = originalLength - 1; i >= 0; i--) {
-      arr[i + numElements] = arr[i];
+      arr[i + numElements] = copy[i];
    }
 
+   // shift additionals in
+   var last;
    for (var i = 0; i < numElements; i++) {
-      arr[i] = arguments[i];
+      arr[i] = arguments[i+1];
+      last = arr[i];
    }
 
-   arr.length = originalLength + numElements;
-   return arr.length;
+   return last;
 }
 
 
