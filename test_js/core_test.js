@@ -7,10 +7,67 @@ test().assert(true);
 
 */
 
-
-// w - want
+// f - function
+// i - inputs
 // w - want
 var tests = [
+
+   {
+      "title": "arrtoip([192, 168, 1, 1])",
+      "f": arrtoip,
+      "i": [[192, 168, 1, 1]],
+      "w": '192.168.1.1',
+      "doc": ""
+   },
+   {
+      "title": "arrtoip([1, 2, 3])",
+      "f": arrtoip,
+      "i": [[ 1, 2, 3]],
+      "w": null,
+      "doc": ""
+   },
+   {
+      "title": "arrtoip([192, '2', -5, 300])",
+      "f": arrtoip,
+      "i": [[ 1, "2", -5, 300]],
+      "w": null,
+      "doc": ""
+   },
+   {
+      "title": "arrtoip([192, '2', 1, 1])",
+      "f": arrtoip,
+      "i": [[ 192, "2", 1, 1]],
+      "w": null,
+      "doc": ""
+   },
+   {
+      "title": "arrtoip([192, 168, -5, 1])",
+      "f": arrtoip,
+      "i": [[ 192, "2", 1, 1]],
+      "w": null,
+      "doc": ""
+   },
+   {
+      "title": "arrtoip([192, 168, 1, 300])",
+      "f": arrtoip,
+      "i": [[ 192, "2", 1, 1]],
+      "w": null,
+      "doc": ""
+   },
+   {
+      "title": "arrtoip('123')",
+      "f": arrtoip,
+      "i": ["123"],
+      "w": null,
+      "doc": ""
+   },
+   {
+      "title": "arrtoip([ 254, 128, 0, 0, 0, 0, 0, 0, 252, 84, 0, 255, 254, 130, 171, 189 ])",
+      "f": arrtoip,
+      "i": [[ 254, 128, 0, 0, 0, 0, 0, 0, 252, 84, 0, 255, 254, 130, 171, 189 ]],
+      "w": "fe80::fc54:ff:fe82:abbd",
+      "doc": ""
+   },
    {
       "title": "type(function)",
       "f": type,
@@ -209,4 +266,4 @@ var tests = [
    }
 ]
 
-run_tests(tests);
+print(run_tests(tests));
