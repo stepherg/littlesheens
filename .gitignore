@@ -22,3 +22,4 @@ sheensio-demo.output
 node-littlesheens
 register_test
 *.dylib
+lib/file_monitor.cc
