@@ -45,15 +45,8 @@ function run_tests(tests) {
             var then = Date.now();
             for (var b = 0; b < rounds; b++) {
                // make a copy of input params in case the function manipulates
-               var f = test.f;
-               var args;
-               if (test.args=== undefined) {
-                  args = Object.assign({}, test.i);
-                  test.f(args);
-               } else {
-                  args = test.args;
-                  test.f.apply(null, args);
-               }
+               var args = Object.assign({}, test.i);
+               test.f.apply(null, args);
             }
             result.bench.rounds = rounds;
             result.bench.elapsed = Date.now() - then;
@@ -65,14 +58,7 @@ function run_tests(tests) {
          }
 
          if (type(test.f) === 'function') {
-            var f = test.f;
-            var args;
-            var bss;
-            if (test.args === undefined) {
-               bss = f(test.i);
-            } else {
-               bss = f.apply(null, test.args);
-            }
+            var bss = test.f.apply(null, test.i);
             result.bss = bss;
             result.happy = canonicalBss(bss) == canonicalBss(test.w);
             result.got = canonicalBss(bss);

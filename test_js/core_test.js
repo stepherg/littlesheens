@@ -76,73 +76,94 @@ var tests = [
    {
       "title": "type(function)",
       "f": type,
-      "i": type,
+      "i": [type],
       "w": 'function',
       "doc": ""
    },
    {
       "title": "type(string)",
       "f": type,
-      "i": "test",
+      "i": ["test"],
       "w": 'string',
       "doc": ""
    },
    {
       "title": "type(array)",
       "f": type,
-      "i": [1,2,3],
+      "i": [[1,2,3]],
       "w": 'array',
       "doc": ""
    },
    {
       "title": "type(boolean)",
       "f": type,
-      "i": true,
+      "i": [true],
       "w": 'boolean',
       "doc": ""
    },
    {
       "title": "type(int)",
       "f": type,
-      "i": 1,
+      "i": [1],
       "w": 'int',
       "doc": ""
    },
    {
       "title": "type(double)",
       "f": type,
-      "i": 1.1,
+      "i": [1.1],
       "w": 'double',
       "doc": ""
    },
    {
       "title": "shift([1,2,3])",
       "f": shift,
-      "i": [1,2,3],
+      "i": [[1,2,3]],
       "w": [1],
       "doc": ""
    },
    {
       "title": "shift(null)",
       "f": shift,
-      "i": null,
+      "i": [null],
       "w": null,
       "doc": ""
    },
    {
       "title": "substr('The black cat climbed the green tree, 4, 5')",
       "f": substr,
-      "args": ["The black cat climbed the green tree", 4, 5],
+      "i": ["The black cat climbed the green tree", 4, 5],
       "w": "black",
-      "doc": ""
+      "doc": "Test indexing string from the beginning with limited characters"
+   },
+   {
+      "title": "substr('The black cat climbed the green tree, 4, -11')",
+      "f": substr,
+      "i": ["The black cat climbed the green tree", 4, -11],
+      "w": "black cat climbed the",
+      "doc": "Test indexing string from the beginning and end"
+   },
+   {
+      "title": "substr('The black cat climbed the green tree, 14')",
+      "f": substr,
+      "i": ["The black cat climbed the green tree", 14],
+      "w": "climbed the green tree",
+      "doc": "Test grabbing limited characters from the beginning of the string"
+   },
+   {
+      "title": "substr('The black cat climbed the green tree, 4, 5')",
+      "f": substr,
+      "i": ["The black cat climbed the green tree", -4],
+      "w": "tree",
+      "doc": "Test indexing string from the end"
+   },
+   {
+      "title": "substr('The black cat climbed the green tree, 4, 5')",
+      "f": substr,
+      "i": ["The black cat climbed the green tree", -4, 2],
+      "w": "tr",
+      "doc": "Test indexing string from the end with limited characters"
    }
-//print(substr(s, 4, 5));      // black
-//var s = "The black cat climbed the green tree";
-//print(substr(s, 4, 5));      // black
-//print(substr(s, 4, -11));    // black cat climbed the
-//print(substr(s, 14));        // climbed the green tree
-//print(substr(s, -4));        // tree
-//print(substr(s, -4, 2));     // tr
 ]
 
 run_tests(tests);
