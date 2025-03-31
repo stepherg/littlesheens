@@ -1,4 +1,4 @@
-// Extend Stirng.slice
+// Extend String.slice
 if (!String.prototype.slice) {
    String.prototype.slice = function(start, end) {
       const length = this.length;
@@ -51,6 +51,56 @@ if (!String.prototype.padStart) {
    };
 }
 
+findConsecutiveRepeated = function(arr) {
+  const result = [];
+  var currentSequence = [];
+
+  for (var i = 0; i < arr.length; i++) {
+    if (i > 0 && arr[i] === arr[i - 1]) {
+       currentSequence.push(arr[i]);
+    } else {
+      if (currentSequence.length > 0) {
+        result.push(currentSequence);
+      }
+      currentSequence = [arr[i]];
+    }
+  }
+
+  if (currentSequence.length > 1) {
+    result.push(currentSequence);
+  }
+
+  return result;
+}
+
+findUniqueSeq = function(arr) {
+   var result = [];
+   var currentSequence = [];
+
+   for (var i = 0; i < arr.length; i++) {
+      if ((i == 0) || (arr[i] === arr[(i - 1)])) {
+         continue;
+      } else if (arr[i] !== arr[(i - 1)]) {
+         currentSequence.push(arr[(i-1)]);
+
+         if (i == (arr.length - 1)) {
+            currentSequence.push(arr[i]);
+         }
+
+         var temp = result;
+         result.push.apply(temp, currentSequence);
+         currentSequence = Array();
+      } 
+   }
+
+   // final array
+   if (currentSequence.length > 1) {
+      result.push(currentSequence);
+   }
+
+   return result;
+}
+
 // arrtoip(arr) → {string}nullable
 // Convert the given input array of byte values to an IP address string.
 // 
@@ -81,10 +131,23 @@ arrtoip = function(arr) {
 
       const ipv6Parts = [];
       for (var i = 0; i < 16; i += 2) {
-         ipv6Parts.push(hexParts[i] + hexParts[i + 1]);
+         var digit = hexParts[i] + hexParts[i + 1];
+
+         var idx = rindex(digit,"0");
+         if (idx < 0) {
+            ipv6Parts.push(digit);
+         } else if (idx == (digit.length - 1)){
+            if (index(digit,"0") == idx) {
+               ipv6Parts.push(digit);
+            } else { 
+               ipv6Parts.push("");
+            }
+         } else {
+            ipv6Parts.push(substr(digit, idx+1));
+         }
       }
 
-      return ipv6Parts.join(':');
+      return findUniqueSeq(ipv6Parts).join(':');
    }
 }
 
