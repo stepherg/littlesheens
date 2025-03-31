@@ -7,7 +7,7 @@ set(CMAKE_COMMON_ARGS)
 if (DEFINED CMAKE_TOOLCHAIN_FILE)
     # Forward the toolchain file if it was provided
     set(CMAKE_COMMON_ARGS -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
-                          -DCMAKE_INSTALL_PREFIX=${CMAKE_ISTALL_PREFIX})
+                          -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX})
 else()
     # Otherwise lean into toolchain environment setup.
     set(CMAKE_COMMON_ARGS -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}

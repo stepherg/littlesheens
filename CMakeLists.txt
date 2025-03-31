@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.10)
 
 #*****************************************************************#
 # Create the master machine .js file. This file will
@@ -21,6 +21,27 @@ add_custom_command(OUTPUT machines_js.c
                    VERBATIM)
 
 add_custom_target(littlesheens_js DEPENDS machines_js.c)
+
+# Find all YAML files
+set(SPECS_DIR "${CMAKE_BINARY_DIR}/specs")
+file(MAKE_DIRECTORY ${SPECS_DIR})
+file(GLOB YAML_FILES "specs/*.yaml")
+foreach(YAML_FILE ${YAML_FILES})
+    get_filename_component(FILE_NAME ${YAML_FILE} NAME_WE)
+    set(JS_FILE "${SPECS_DIR}/${FILE_NAME}.js")
+
+    add_custom_command(
+        OUTPUT ${JS_FILE}
+        COMMAND cat ${YAML_FILE} | yaml2json | jq . > ${JS_FILE}
+        DEPENDS ${YAML_FILE}
+        COMMENT "Converting ${FILE_NAME}.yaml to ${FILE_NAME}.js"
+        VERBATIM
+    )
+    list(APPEND JS_FILES ${JS_FILE})
+endforeach()
+
+add_custom_target(ConvertYamlToJson ALL DEPENDS ${JS_FILES})
+
 
 #*****************************************************************#
 # The main library that will be generated for littlesheens.
@@ -55,12 +76,14 @@ if (NOT TARGET_PLATFORM STREQUAL "yocto")
   include_directories("${CMAKE_INSTALL_PREFIX}/include" "${CMAKE_INSTALL_PREFIX}/include/duktape")
 
   if (NOT TARGET_PLATFORM STREQUAL "darwin")
-    set(CMAKE_C_FLAGS "-Wl,--gc-sections ${CMAKE_C_FLAGS}")
+    set(CMAKE_C_FLAGS "-DOSX -Wno-unused-but-set-variable ${CMAKE_C_FLAGS}")
   endif()
 
   set(CMAKE_C_FLAGS "-Wall -std=c99 -fno-asynchronous-unwind-tables -ffunction-sections -fPIC ${CMAKE_C_FLAGS}")
   set(CMAKE_SHARED_LINKER_FLAGS "-L${CMAKE_INSTALL_PREFIX}/lib ${CMAKE_SHARED_LINKER_FLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "-L${CMAKE_INSTALL_PREFIX}/lib ${CMAKE_EXE_LINKER_FLAGS}")
+  set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
   # 3rd party libraries (duktape)
   include(CMakeLists-ExternalProjects.txt)
@@ -71,13 +94,13 @@ if (NOT TARGET_PLATFORM STREQUAL "yocto")
   add_executable(demo demo.c util.c util.h)
   target_link_libraries(demo littlesheens duktape m)
 
-  add_executable(mdemo main.c)
-  target_link_libraries(mdemo littlesheens duktape m)
+  add_executable(driver driver.c util.c util.h)
+  target_link_libraries(driver littlesheens duktape m)
 
   add_executable(sheensio sheensio.c)
   target_link_libraries(sheensio littlesheens duktape m)
-  
+      
   install(TARGETS demo DESTINATION bin)
-  install(TARGETS mdemo DESTINATION bin)
+  install(TARGETS driver DESTINATION bin)
   install(TARGETS sheensio DESTINATION bin)
 endif()
