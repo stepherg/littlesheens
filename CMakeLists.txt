@@ -1,35 +1,80 @@
 cmake_minimum_required(VERSION 3.10)
+project(littlesheens C)
 
-#*****************************************************************#
-# Create the master machine .js file. This file will
-# then be converted into a hex array that may be
-# compiled into a C file.
-#
-# TODO: The master file needs to be "minimized".
-#*****************************************************************#
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -std=c99 -fno-asynchronous-unwind-tables -ffunction-sections -I ${CMAKE_SOURCE_DIR} -fPIC")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -ldl")
 
-set(JSFILES "js/match.js" "js/sandbox.js" "js/step.js" "js/prof.js" "driver.js")
+if (APPLE)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOSX -Wno-unused-but-set-variable")
+endif()
 
-add_custom_command(OUTPUT machines_js.c
-                   COMMAND cat ${JSFILES} > mach_machines_jssrc
-                   COMMAND truncate -s +1 mach_machines_jssrc
-                   COMMAND xxd -i mach_machines_jssrc machines_js.c
-                   COMMAND ${CMAKE_COMMAND} -E echo "unsigned char* mach_machines_js() { return mach_machines_jssrc; }" >> machines_js.c
-                   COMMAND ${CMAKE_COMMAND} -E remove mach_machines_jssrc
-                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                   DEPENDS ${JSFILES}
-                   VERBATIM)
+# Duktape configuration
+set(DUKVERSION "duktape-2.7.0")
+set(DUK_SRC "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src")
+set(DUK_EXTRAS "${CMAKE_SOURCE_DIR}/${DUKVERSION}/extras/print-alert")
 
-add_custom_target(littlesheens_js DEPENDS machines_js.c)
+# Directories
+set(LIB_DIR "${CMAKE_SOURCE_DIR}/lib")
+set(OUT_DIR "${CMAKE_BINARY_DIR}/lib")
+set(JS_DIR "${CMAKE_SOURCE_DIR}/js")
+set(SPEC_DIR "${CMAKE_SOURCE_DIR}/specs")
 
-# Find all YAML files
+# Create output directory
+file(MAKE_DIRECTORY ${OUT_DIR})
+
+# Copy test_js directory
+file(COPY ${CMAKE_SOURCE_DIR}/test_js DESTINATION ${CMAKE_BINARY_DIR})
+
+# Download and extract Duktape
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${DUKVERSION}")
+    file(DOWNLOAD "http://duktape.org/${DUKVERSION}.tar.xz" "${CMAKE_BINARY_DIR}/${DUKVERSION}.tar.xz")
+    execute_process(COMMAND tar xf "${CMAKE_BINARY_DIR}/${DUKVERSION}.tar.xz" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
+# libduktape shared library
+add_library(duktape SHARED 
+    ${DUK_SRC}/duktape.c 
+    ${DUK_EXTRAS}/duk_print_alert.c
+)
+target_include_directories(duktape PRIVATE ${DUK_SRC} ${DUK_EXTRAS})
+target_link_libraries(duktape PRIVATE m)
+
+# libmachines shared library
+add_library(machines SHARED 
+    machines.c 
+    machines_js.c
+)
+target_include_directories(machines PRIVATE ${DUK_SRC} ${DUK_EXTRAS})
+target_link_libraries(machines PRIVATE duktape)
+
+file(GLOB JS_FILES "${JS_DIR}/*.js")
+file(GLOB LIB_JS_FILES "${LIB_DIR}/*.js")
+set(JSFILES "${JS_FILES}" "${LIB_JS_FILES}" "${CMAKE_SOURCE_DIR}/driver.js")
+
+# Custom command for machines.js and machines_js.c
+add_custom_command(
+    OUTPUT machines.js
+    COMMAND cat ${JSFILES} > machines.js
+    DEPENDS ${JSFILES}
+)
+
+add_custom_command(
+    OUTPUT machines_js.c
+    COMMAND minify machines.js > machines.js.terminated
+    COMMAND truncate -s +1 machines.js.terminated
+    COMMAND ${CMAKE_SOURCE_DIR}/embedstr.sh mach_machines_js machines.js.terminated machines_js.c
+    COMMAND rm machines.js.terminated
+    DEPENDS machines.js ${CMAKE_SOURCE_DIR}/embedstr.sh
+)
+
+# Convert YAML specs to JS
 set(SPECS_DIR "${CMAKE_BINARY_DIR}/specs")
 file(MAKE_DIRECTORY ${SPECS_DIR})
-file(GLOB YAML_FILES "specs/*.yaml")
+file(GLOB YAML_FILES "${SPEC_DIR}/*.yaml")
 foreach(YAML_FILE ${YAML_FILES})
     get_filename_component(FILE_NAME ${YAML_FILE} NAME_WE)
     set(JS_FILE "${SPECS_DIR}/${FILE_NAME}.js")
-
     add_custom_command(
         OUTPUT ${JS_FILE}
         COMMAND cat ${YAML_FILE} | yaml2json | jq . > ${JS_FILE}
@@ -42,65 +87,52 @@ endforeach()
 
 add_custom_target(ConvertYamlToJson ALL DEPENDS ${JS_FILES})
 
+# Executables
+add_executable(demo demo.c util.c)
+target_include_directories(demo PRIVATE ${DUK_SRC})
+target_link_libraries(demo PRIVATE machines duktape)
 
-#*****************************************************************#
-# The main library that will be generated for littlesheens.
-# This depends on Duktape being installed.
-#*****************************************************************#
+add_executable(register_test register_test.c util.c)
+target_include_directories(register_test PRIVATE ${DUK_SRC})
+target_link_libraries(register_test PRIVATE machines duktape)
 
-set(LITTLESHEENS_SOURCE
-    ${CMAKE_SOURCE_DIR}/machines.c
-    ${CMAKE_SOURCE_DIR}/machines_js.c)
+add_executable(sheensio sheensio.c)
+target_include_directories(sheensio PRIVATE ${DUK_SRC})
+target_link_libraries(sheensio PRIVATE machines duktape)
 
-add_library(littlesheens SHARED ${LITTLESHEENS_SOURCE})
+add_executable(driver driver.c util.c)
+target_include_directories(driver PRIVATE ${DUK_SRC})
+target_link_libraries(driver PRIVATE machines duktape)
 
-# Force in the master .js file creation
-add_dependencies(littlesheens littlesheens_js)
-set_source_files_properties("${CMAKE_SOURCE_DIR}/machines_js.c" PROPERTIES GENERATED TRUE)
+# Dynamic libraries from lib directory
+file(GLOB LIB_SRCS "${LIB_DIR}/*.c")
+foreach(src ${LIB_SRCS})
+    get_filename_component(filename ${src} NAME_WE)
+    add_library(${filename} SHARED ${src})
+    target_include_directories(${filename} PRIVATE ${DUK_SRC})
+    target_link_libraries(${filename} PRIVATE duktape)
+    set_target_properties(${filename} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
+endforeach()
 
-target_include_directories(littlesheens PUBLIC ${CMAKE_SOURCE_DIR})
-target_link_libraries(littlesheens duktape)
+# Main target
+add_custom_target(build_all ALL DEPENDS 
+    duktape 
+    machines 
+    demo sheensio driver register_test
+)
 
-set_target_properties(littlesheens PROPERTIES VERSION 1.0.0)
+# Test target
+add_custom_target(test
+    COMMAND make -C ${CMAKE_BINARY_DIR}/test_js
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/test_js
+    DEPENDS driver
+    COMMENT "Running make in test_js directory"
+)
 
-install(TARGETS littlesheens LIBRARY DESTINATION lib)
-install(FILES ${CMAKE_SOURCE_DIR}/machines.h DESTINATION include/littlesheens)
-
-
-#*****************************************************************#
-# If we are NOT building through YOCTO then we want to build
-# a sample application.
-#*****************************************************************#
-
-if (NOT TARGET_PLATFORM STREQUAL "yocto")
-  include_directories("${CMAKE_INSTALL_PREFIX}/include" "${CMAKE_INSTALL_PREFIX}/include/duktape")
-
-  if (NOT TARGET_PLATFORM STREQUAL "darwin")
-    set(CMAKE_C_FLAGS "-DOSX -Wno-unused-but-set-variable ${CMAKE_C_FLAGS}")
-  endif()
-
-  set(CMAKE_C_FLAGS "-Wall -std=c99 -fno-asynchronous-unwind-tables -ffunction-sections -fPIC ${CMAKE_C_FLAGS}")
-  set(CMAKE_SHARED_LINKER_FLAGS "-L${CMAKE_INSTALL_PREFIX}/lib ${CMAKE_SHARED_LINKER_FLAGS}")
-  set(CMAKE_EXE_LINKER_FLAGS "-L${CMAKE_INSTALL_PREFIX}/lib ${CMAKE_EXE_LINKER_FLAGS}")
-  set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
-  set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-
-  # 3rd party libraries (duktape)
-  include(CMakeLists-ExternalProjects.txt)
-
-  add_dependencies(littlesheens duktape-ext)
-  target_link_libraries(littlesheens duktape)
-
-  add_executable(demo demo.c util.c util.h)
-  target_link_libraries(demo littlesheens duktape m)
-
-  add_executable(driver driver.c util.c util.h)
-  target_link_libraries(driver littlesheens duktape m)
-
-  add_executable(sheensio sheensio.c)
-  target_link_libraries(sheensio littlesheens duktape m)
-      
-  install(TARGETS demo DESTINATION bin)
-  install(TARGETS driver DESTINATION bin)
-  install(TARGETS sheensio DESTINATION bin)
-endif()
+# Clean target (CMake already provides 'clean' target)
+add_custom_target(distclean
+    COMMAND ${CMAKE_COMMAND} -E remove *.so machines.js machines_js.c demo sheensio driver
+    COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_SOURCE_DIR}/${DUKVERSION}.tar.xz
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_SOURCE_DIR}/${DUKVERSION}
+    DEPENDS clean
+)

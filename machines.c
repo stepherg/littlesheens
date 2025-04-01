@@ -248,7 +248,7 @@ int evalf(char *fmt, ...) {
    va_start(args, fmt);
    size_t buf_limit = 16 * 1024;
    char *buf = (char *)malloc(buf_limit);
-   JSON dst= (char*) malloc(buf_limit);
+   JSON dst = (char *)malloc(buf_limit);
 
    int wrote = vsnprintf(buf, buf_limit, fmt, args);
    if (buf_limit <= wrote) {
@@ -269,10 +269,10 @@ int evalf(char *fmt, ...) {
    }
    duk_pop(ctx->dctx);
 #else
-  int rc = mach_eval(buf, dst, buf_limit); 
-  va_end(args);
-  free(buf);
-  free(dst); // discard output
+   int rc = mach_eval(buf, dst, buf_limit);
+   va_end(args);
+   free(buf);
+   free(dst); // discard output
 #endif
 
    return rc;
@@ -513,7 +513,7 @@ static void register_dynamic_functions(Ctx *ctx, const char *dir_path) {
    struct dirent *entry;
    char full_path[512];
    while ((entry = readdir(dir)) != NULL) {
-      if (strstr(entry->d_name, ".so") != NULL) { // Look for .so files
+      if (strstr(entry->d_name, ".so") != NULL || strstr(entry->d_name, ".dylib") != NULL) {
          snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
          load_and_register_functions(ctx, full_path);
       }
