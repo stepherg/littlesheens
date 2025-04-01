@@ -7,6 +7,8 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -ldl")
 
 if (APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOSX -Wno-unused-but-set-variable")
+  # Adding debug flags to MAC builds by default
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer -fno-inline -O0 -g3 -ggdb3")
 endif()
 
 find_program(YAML2JSON yaml2json)
@@ -106,10 +108,6 @@ add_executable(demo demo.c util.c)
 target_include_directories(demo PRIVATE ${DUK_SRC})
 target_link_libraries(demo PRIVATE machines duktape)
 
-add_executable(register_test register_test.c util.c)
-target_include_directories(register_test PRIVATE ${DUK_SRC})
-target_link_libraries(register_test PRIVATE machines duktape)
-
 add_executable(sheensio sheensio.c)
 target_include_directories(sheensio PRIVATE ${DUK_SRC})
 target_link_libraries(sheensio PRIVATE machines duktape)
@@ -132,7 +130,7 @@ endforeach()
 add_custom_target(build_all ALL DEPENDS 
     duktape 
     machines 
-    demo sheensio driver register_test
+    demo sheensio driver
 )
 
 # Test target

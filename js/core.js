@@ -107,6 +107,7 @@ findUniqueSeq = function(arr) {
 // Input arrays of length 4 are converted to IPv4 addresses, arrays of length 16 to IPv6 ones. All other lengths are rejected. If any array element is not an integer or exceeds the range 0..255 (inclusive), the array is rejected.
 // 
 // Returns a string containing the formatted IP address. Returns null if the input array was invalid.
+/*
 arrtoip = function(arr) {
    if (!Array.isArray(arr)) return null;
 
@@ -150,7 +151,7 @@ arrtoip = function(arr) {
       return findUniqueSeq(ipv6Parts).join(':');
    }
 }
-
+*/
 
 // assert(cond, messageopt)
 // Raise an exception with the given message parameter when the value in cond is not truish.
