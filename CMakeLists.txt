@@ -18,7 +18,7 @@ endif()
 
 find_program(MINIFY minify)
 if(MINIFY )
-  message(STATUS "Found minify at: ${MINIFY }")
+  message(STATUS "Found minify at: ${MINIFY}")
 else()
   message(FATAL_ERROR "minify is required but not found.")
 endif()
