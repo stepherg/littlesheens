@@ -9,6 +9,20 @@ if (APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOSX -Wno-unused-but-set-variable")
 endif()
 
+find_program(YAML2JSON yaml2json)
+if(YAML2JSON)
+  message(STATUS "Found yaml2json at: ${YAML2JSON}")
+else()
+  message(FATAL_ERROR "yaml2json is required but not found.")
+endif()
+
+find_program(MINIFY minify)
+if(MINIFY )
+  message(STATUS "Found minify at: ${MINIFY }")
+else()
+  message(FATAL_ERROR "minify is required but not found.")
+endif()
+
 # Duktape configuration
 set(DUKVERSION "duktape-2.7.0")
 set(DUK_SRC "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src")
