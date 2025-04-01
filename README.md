@@ -43,13 +43,13 @@ export PATH=$PATH:$(go env GOPATH)/bin
 To add it to your user's default path:
 
 ```Shell
-echo $PATH:$(go env GOPATH)/bin >> <location of .profile or .zprofile for MAC>
+echo PATH=$PATH:$(go env GOPATH)/bin >> <location of .profile or .zprofile for MAC>
 
 # Usually .profile on Linux
-echo $PATH:$(go env GOPATH)/bin >> ~/.profile
+echo 'PATH=$PATH:'$(go env GOPATH)/bin >> ~/.profile
 
 # Usually .zprofile on a Mac
-echo $PATH:$(go env GOPATH)/bin >> ~/.zprofile
+echo 'PATH=$PATH':$(go env GOPATH)/bin >> ~/.zprofile
 
 ```
 
