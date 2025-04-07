@@ -31,7 +31,7 @@ static int arrtoip(const unsigned char *bytes, size_t len, char *output) {
    return -1;
 }
 
-duk_ret_t native_arrtoip(duk_context *ctx) {
+static duk_ret_t native_arrtoip(duk_context *ctx) {
    if (!duk_is_array(ctx, 0)) {
       //
       // Returning 0 on failure until test code using jq is updated

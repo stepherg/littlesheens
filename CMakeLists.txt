@@ -19,10 +19,15 @@ else()
 endif()
 
 find_program(MINIFY minify)
-if(MINIFY )
+if(MINIFY)
   message(STATUS "Found minify at: ${MINIFY}")
 else()
   message(FATAL_ERROR "minify is required but not found.")
+endif()
+
+find_package(CURL)
+if(NOT CURL_FOUND)
+  message(FATAL_ERROR "libcurl is required but not found.")
 endif()
 
 # Duktape configuration
@@ -122,7 +127,7 @@ foreach(src ${LIB_SRCS})
     get_filename_component(filename ${src} NAME_WE)
     add_library(${filename} SHARED ${src})
     target_include_directories(${filename} PRIVATE ${DUK_SRC})
-    target_link_libraries(${filename} PRIVATE duktape)
+    target_link_libraries(${filename} PRIVATE duktape curl)
     set_target_properties(${filename} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
 endforeach()
 
