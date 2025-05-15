@@ -33,7 +33,7 @@ endif()
 # Duktape configuration
 set(DUKVERSION "duktape-2.7.0")
 set(DUK_SRC "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src")
-set(DUK_EXTRAS "${CMAKE_SOURCE_DIR}/${DUKVERSION}/extras/print-alert")
+set(DUK_EXTRAS "${CMAKE_SOURCE_DIR}/${DUKVERSION}/extras")
 
 # Directories
 set(LIB_DIR "${CMAKE_SOURCE_DIR}/lib")
@@ -56,7 +56,9 @@ endif()
 # libduktape shared library
 add_library(duktape SHARED 
     ${DUK_SRC}/duktape.c 
-    ${DUK_EXTRAS}/duk_print_alert.c
+    ${DUK_EXTRAS}/print-alert/duk_print_alert.c
+    ${DUK_EXTRAS}/module-duktape/duk_module_duktape.c
+    ${DUK_EXTRAS}/module-node/duk_module_node.c
 )
 target_include_directories(duktape PRIVATE ${DUK_SRC} ${DUK_EXTRAS})
 target_link_libraries(duktape PRIVATE m)
@@ -66,7 +68,7 @@ add_library(machines SHARED
     machines.c 
     machines_js.c
 )
-target_include_directories(machines PRIVATE ${DUK_SRC} ${DUK_EXTRAS})
+target_include_directories(machines PRIVATE ${DUK_SRC} ${DUK_EXTRAS}/print-alert ${DUK_EXTRAS}/module-duktape ${DUK_EXTRAS}/module-node)
 target_link_libraries(machines PRIVATE duktape)
 
 file(GLOB JS_FILES "${JS_DIR}/*.js")
