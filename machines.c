@@ -25,6 +25,7 @@
 #include <dlfcn.h>
 
 #include "duktape.h"
+#include "duk_module_duktape.h"
 #include "register.h"
 #include "machines.h"
 #include "machines_js.h"
@@ -201,6 +202,9 @@ int mach_open() {
    //
    //
    register_c_funcs(ctx);
+
+   // Enable module loading support (require)
+   duk_module_duktape_init(ctx->dctx);
 
    // eval default js libraries
    //printf("eval default js libraries\n");
