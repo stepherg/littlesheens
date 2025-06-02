@@ -1,7 +1,6 @@
 #include <duktape.h>
 #include <register.h>
 #include <pthread.h>
-#include <sys/timerfd.h>
 #include <poll.h>
 #include <unistd.h>
 #include <errno.h>
@@ -10,7 +9,6 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <time.h>
-#include <sys/sysinfo.h>
 
 // Timer structure
 typedef struct
