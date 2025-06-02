@@ -65,9 +65,13 @@ Scheduler.prototype.removeTask = function (task) {
 
 // Clear all tasks
 Scheduler.prototype.clearAllTasks = function () {
-  for (var i = 0; i < this.tasks.length; i++) {
-    this.removeTask(this.tasks[i]);
+  // Need to debug why all tasks aren't removed in a single for loop
+  while (this.tasks.length > 0) {
+    for (var i = 0; i < this.tasks.length; i++) {
+      this.removeTask(this.tasks[i]);
+    }
   }
+
   this.tasks = []; // Ensure array is empty
 };
 

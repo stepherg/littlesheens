@@ -65,12 +65,8 @@ Trigger.prototype.removeTrigger = function (trigger) {
 
 // Clear all triggers
 Trigger.prototype.clearAllTriggers = function () {
-  for (var i = 0; i < this.triggers.length; i++) {
-    this.removeTrigger(this.triggers[i]);
-  }
-
-  // Need to debug why all triggers aren't removed after the first loop
-  if (this.triggers.length > 0) {
+  // Need to debug why all triggers aren't removed in a single for loop
+  while (this.triggers.length > 0) {
     for (var i = 0; i < this.triggers.length; i++) {
       this.removeTrigger(this.triggers[i]);
     }  
