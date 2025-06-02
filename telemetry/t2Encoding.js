@@ -8,9 +8,6 @@ function Encoding(profile) {
 
 // Parse profile to configure encoding
 Encoding.prototype._parseProfile = function (profile) {
-   // Ensure console is defined
-   var console = console || { log: function () { } };
-
    if (Object.prototype.hasOwnProperty.call(profile, 'EncodingType')) {
       this._encoding_type = profile['EncodingType'];
 

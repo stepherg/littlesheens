@@ -44,7 +44,6 @@ Event.prototype._getValue = function (e) {
 };
 
 Event.prototype.unRegisterEvent = function (e) {
-   var console = console || { log: function () { } };
    console.log("STOP monitoring for " + e.use + " for " + e.name + " from " + e.component);
 };
 
