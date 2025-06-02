@@ -44,9 +44,6 @@ find_library(RBUS_LIBRARY NAMES rbus HINTS "/usr/lib")
 find_path(RBUS_INCLUDE_DIR NAMES rbus.h HINTS "/usr/include/rbus")
 find_path(RTMSG_INCLUDE_DIR NAMES rtMessage.h HINTS "/usr/include/rtmessage")
 
-if (NOT RBUS_LIBRARY OR NOT RBUS_INCLUDE_DIR OR NOT RTMSG_INCLUDE_DIR)
-    message(FATAL_ERROR "rbus library or headers not found.")
-endif()
 
 # Duktape configuration
 set(DUKVERSION "duktape-2.7.0")
@@ -149,10 +146,21 @@ file(GLOB LIB_SRCS "${LIB_DIR}/*.c")
 foreach(src ${LIB_SRCS})
     get_filename_component(filename ${src} NAME_WE)
     add_library(${filename} SHARED ${src})
-    target_include_directories(${filename} PRIVATE ${DUK_SRC} ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
-    target_link_libraries(${filename} PRIVATE duktape curl ${RBUS_LIBRARY} ${YAML_LIBRARY})
+    target_include_directories(${filename} PRIVATE ${DUK_SRC} ${YAML_INCLUDE_DIR})
+    target_link_libraries(${filename} PRIVATE duktape curl ${YAML_LIBRARY})
     set_target_properties(${filename} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
 endforeach()
+
+if (RBUS_LIBRARY AND RBUS_INCLUDE_DIR AND RTMSG_INCLUDE_DIR)
+    set(RBUS_SRCS "${LIB_DIR}/rbus/rbus_duktape.c")
+    add_library(rbus_duktape SHARED ${RBUS_SRCS})
+    target_include_directories(rbus_duktape PRIVATE ${DUK_SRC} ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
+    target_link_libraries(rbus_duktape PRIVATE duktape ${RBUS_LIBRARY})
+    set_target_properties(rbus_duktape PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
+else()
+    message(STATUS "RBUS not found")
+endif()
+
 
 # Main target
 add_custom_target(build_all ALL DEPENDS 
