@@ -153,11 +153,6 @@ static void event_handler(rbusHandle_t handle, rbusEvent_t const *event, rbusEve
 static duk_ret_t duk_rbus_open(duk_context *ctx, const char *componentName)
 {
    rbusError_t err;
-   if (!duk_is_string(ctx, 0))
-   {
-      duk_error(ctx, DUK_ERR_TYPE_ERROR, "componentName must be a string");
-   }
-   //const char *componentName = duk_get_string(ctx, 0);
 
 #if 1
    err = rbus_openBrokerConnection(componentName);
