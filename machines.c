@@ -26,6 +26,7 @@
 
 #include "duktape.h"
 #include "duk_module_duktape.h"
+#include "duk_console.h"
 #include "register.h"
 #include "machines.h"
 #include "machines_js.h"
@@ -42,6 +43,62 @@ typedef struct {
 static Ctx *ctx = NULL;
 
 static int register_c_funcs(Ctx *ctx);
+
+static char *read_file_as_string(const char *filename)
+{
+   FILE *f = fopen(filename, "rb");
+   if (!f)
+   {
+      return NULL;
+   }
+   fseek(f, 0, SEEK_END);
+   long len = ftell(f);
+   fseek(f, 0, SEEK_SET);
+   char *src = (char *)malloc(len + 1);
+   if (!src)
+   {
+      fclose(f);
+      return NULL;
+   }
+   fread(src, 1, len, f);
+   src[len] = '\0';
+   fclose(f);
+   return src;
+}
+
+// Duktape modSearch function
+static duk_ret_t mod_search(duk_context *ctx)
+{
+   // Get module ID from stack (index 0)
+   const char *id = duk_require_string(ctx, 0);
+
+   // Simple module resolution (assumes .js extension)
+   char filename[256];
+   snprintf(filename, sizeof(filename), "%s.js", id);
+
+   // Read the file
+   char *src = read_file_as_string(filename);
+   if (!src)
+   {
+      duk_push_sprintf(ctx, "cannot find module: %s", id);
+      duk_throw(ctx); // Throw error if module not found
+   }
+
+   // Push the module source code to the stack
+   duk_push_string(ctx, src);
+   free(src);
+   return 1;
+}
+
+// Register modSearch function to Duktape.modSearch
+static void mod_search_register(duk_context *ctx)
+{
+   duk_push_global_object(ctx);
+   duk_get_prop_string(ctx, -1, "Duktape");
+   duk_push_c_function(ctx, mod_search, 4);
+   duk_put_prop_string(ctx, -2, "modSearch");
+   duk_pop_n(ctx, 2);
+}
 
 void *mach_make_ctx() {
    void *ret = malloc(sizeof(Ctx));
@@ -90,6 +147,7 @@ static duk_ret_t providerer(duk_context *dctx) {
    return 1;
 }
 
+#if 0
 char *strdup(const char *s) {
    size_t n;
    char *acc;
@@ -103,6 +161,7 @@ char *strdup(const char *s) {
    }
    return (char *)memcpy(acc, s, n);
 }
+#endif
 
 int copystr(char *dst, int limit, char *src) {
    if (src == NULL) {
@@ -205,6 +264,11 @@ int mach_open() {
 
    // Enable module loading support (require)
    duk_module_duktape_init(ctx->dctx);
+
+   duk_console_init(ctx->dctx, DUK_CONSOLE_PROXY_WRAPPER);
+
+   // Register modSearch function
+   mod_search_register(ctx->dctx);
 
    // eval default js libraries
    //printf("eval default js libraries\n");
@@ -487,7 +551,7 @@ static void load_and_register_functions(Ctx *ctx, const char *path) {
 
    // Clear any existing dlerror
    dlerror();
-   RegisterFunc reg_func = dlsym(ctx->func_handle, "register_functions");
+   RegisterFunc reg_func = dlsym(ctx->func_handle, "register_function");
    char *error = dlerror();
    if (error != NULL) {
       printf("Failed to find register_functions in %s: %s\n", path, error);
@@ -496,14 +560,8 @@ static void load_and_register_functions(Ctx *ctx, const char *path) {
       return;
    }
 
-   DukFunctionRegistration *funcs = reg_func();
-   if (funcs) {
-      for (DukFunctionRegistration *f = funcs; f->name != NULL; f++) {
-         duk_push_c_function(ctx->dctx, f->func, f->nargs);
-         duk_put_global_string(ctx->dctx, f->name);
-         //printf("Registered %s from %s\n", f->name, path);
-      }
-      free(funcs); // reg_func allocates memory
+   if (reg_func) {
+      reg_func(ctx->dctx);
    }
 }
 

@@ -14,11 +14,25 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <unistd.h>
+#include <signal.h>
 
 #include "machines.h"
 #include "util.h"
 
+volatile sig_atomic_t keep_running = 1;
+
+void sigint_handler(int signal)
+{
+  keep_running = 0;
+}
+
 int main(int argc, char **argv) {
+
+  if (signal(SIGINT, sigint_handler) == SIG_ERR) {
+    perror("signal");
+    return 1;
+  }
 
   mach_set_ctx(mach_make_ctx());
 
@@ -37,6 +51,10 @@ int main(int argc, char **argv) {
   rc = evalFiles(argc, argv);
   if (MACH_OKAY != rc) {
     exit(rc);
+  }
+
+  while (keep_running) {
+    sleep(1);
   }
 
   mach_close();

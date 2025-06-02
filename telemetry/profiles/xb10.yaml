@@ -1,0 +1,176 @@
+profiles:
+  - name: XfinityWIFI_SYNC
+    value:
+      HTTP:
+        Compression: None
+        Method: POST
+        RequestURIParameter:
+          - Reference: Profile.Name
+            Name: profileName
+          - Name: reportVersion
+            Reference: Profile.Version
+        URL: https://stbrtl.stb.r53.xcal.tv
+      JSONEncoding:
+        ReportFormat: NameValuePair
+        ReportTimestamp: None
+      Parameter:
+        - reference: Profile.Name
+          type: dataModel
+        - reference: Profile.Version
+          type: dataModel
+        - name: Profile
+          reference: Device.DeviceInfo.X_RDK_RDKProfileName
+          type: dataModel
+        - type: dataModel
+          name: Time
+          reference: Device.Time.X_RDK_CurrentUTCTime
+        - name: mac
+          reference: Device.DeviceInfo.X_COMCAST-COM_WAN_MAC
+          type: dataModel
+        - name: CMMAC_split
+          reference: Device.DeviceInfo.X_COMCAST-COM_CM_MAC
+          type: dataModel
+        - reference: Device.DeviceInfo.X_COMCAST-COM_WAN_IP
+          type: dataModel
+          name: erouterIpv4
+        - name: erouterIpv6
+          reference: Device.DeviceInfo.X_COMCAST-COM_WAN_IPv6
+          type: dataModel
+        - name: PartnerId
+          reference: Device.DeviceInfo.X_RDKCENTRAL-COM_Syndication.PartnerId
+          type: dataModel
+        - name: Version
+          reference: Device.DeviceInfo.SoftwareVersion
+          type: dataModel
+        - type: dataModel
+          name: AccountId
+          reference: Device.DeviceInfo.X_RDKCENTRAL-COM_RFC.Feature.AccountInfo.AccountID
+        - name: cpe_passpoint_enable
+          reference: Device.WiFi.AccessPoint.10.X_RDKCENTRAL-COM_InterworkingServiceEnable
+          type: dataModel
+        - name: cpe_passpoint_inter_parameters
+          reference: Device.WiFi.AccessPoint.10.X_RDKCENTRAL-COM_InterworkingService.Parameters
+          type: dataModel
+        - name: cpe_passpoint_parameters
+          reference: Device.WiFi.AccessPoint.10.X_RDKCENTRAL-COM_Passpoint.Parameters
+          type: dataModel
+        - reference: Device.WiFi.AccessPoint.10.X_RDKCENTRAL-COM_Passpoint.Enable
+          type: dataModel
+          name: cpe_passpoint_rdk_enable
+        - reference: Device.WiFi.SSID.6.Enable
+          type: dataModel
+          name: open5_bss_active
+        - type: dataModel
+          name: secure5_bss_active
+          reference: Device.WiFi.SSID.10.Enable
+        - reference: Device.WiFi.AccessPoint.10.Security.RadiusServerIPAddr
+          type: dataModel
+          name: secure5_radius_server_ip
+        - name: wifi_enabled
+          reference: Device.DeviceInfo.X_COMCAST_COM_xfinitywifiEnable
+          type: dataModel
+        - name: primary_tunnel
+          reference: Device.X_COMCAST-COM_GRE.Tunnel.1.PrimaryRemoteEndpoint
+          type: dataModel
+        - name: secondary_tunnel
+          reference: Device.X_COMCAST-COM_GRE.Tunnel.1.SecondaryRemoteEndpoint
+          type: dataModel
+        - name: open5_advertisement_str
+          reference: Device.WiFi.AccessPoint.6.SSIDAdvertisementEnabled
+          type: dataModel
+        - reference: Device.WiFi.AccessPoint.10.SSIDAdvertisementEnabled
+          type: dataModel
+          name: secure5_advertisement_str
+        - name: device_vlan_2
+          reference: Device.X_COMCAST-COM_GRE.Tunnel.1.Interface.2.VLANID
+          type: dataModel
+        - name: open5_ssid_str
+          reference: Device.WiFi.SSID.6.SSID
+          type: dataModel
+        - name: secure5_ssid_str
+          reference: Device.WiFi.SSID.10.SSID
+          type: dataModel
+        - name: secure5_securitymode_str
+          reference: Device.WiFi.AccessPoint.10.Security.ModeEnabled
+          type: dataModel
+        - reference: Device.WiFi.AccessPoint.10.Security.RadiusServerPort
+          type: dataModel
+          name: secure5_pri_port
+        - name: dscp_marker
+          reference: Device.X_COMCAST-COM_GRE.Tunnel.1.DSCPMarkPolicy
+          type: dataModel
+        - name: WIFI_CH_2_split
+          reference: Device.WiFi.Radio.2.Channel
+          type: dataModel
+        - type: dataModel
+          name: WIFI_CW_2_split
+          reference: Device.WiFi.Radio.2.OperatingChannelBandwidth
+        - type: dataModel
+          name: open5_bssid_str
+          reference: Device.WiFi.SSID.6.BSSID
+        - name: secure5_bssid_str
+          reference: Device.WiFi.SSID.10.BSSID
+          type: dataModel
+        - name: open5_status_str
+          reference: Device.WiFi.SSID.6.Status
+          type: dataModel
+        - reference: Device.WiFi.SSID.10.Status
+          type: dataModel
+          name: secure5_status_str
+        - name: open5_beaconpower_str
+          reference: Device.WiFi.AccessPoint.6.X_RDKCENTRAL-COM_ManagementFramePowerControl
+          type: dataModel
+        - type: dataModel
+          name: open5_beaconrate_str
+          reference: Device.WiFi.AccessPoint.6.X_RDKCENTRAL-COM_BeaconRate
+        - name: secure5_beaconpower_str
+          reference: Device.WiFi.AccessPoint.10.X_RDKCENTRAL-COM_ManagementFramePowerControl
+          type: dataModel
+        - name: secure5_beaconrate_str
+          reference: Device.WiFi.AccessPoint.10.X_RDKCENTRAL-COM_BeaconRate
+          type: dataModel
+        - name: radio5_beaconinterval
+          reference: Device.WiFi.Radio.2.X_COMCAST-COM_BeaconInterval
+          type: dataModel
+        - name: secure5_encryption
+          reference: Device.WiFi.AccessPoint.10.Security.X_CISCO_COM_EncryptionMethod
+          type: dataModel
+        - name: secure5_sec_radius_server_ip
+          reference: Device.WiFi.AccessPoint.10.Security.SecondaryRadiusServerIPAddr
+          type: dataModel
+        - name: secure5_sec_port
+          reference: Device.WiFi.AccessPoint.10.Security.SecondaryRadiusServerPort
+          type: dataModel
+        - type: dataModel
+          name: UPTIME_split
+          reference: Device.DeviceInfo.UpTime
+        - type: dataModel
+          name: open5_radius_server_ip
+          reference: Device.WiFi.AccessPoint.6.Security.RadiusServerIPAddr
+        - name: open5_pri_port
+          reference: Device.WiFi.AccessPoint.6.Security.RadiusServerPort
+          type: dataModel
+        - reference: Device.WiFi.AccessPoint.6.IsolationEnable
+          type: dataModel
+          name: open5_isolation_enable
+        - name: secure5_isolation_enable
+          reference: Device.WiFi.AccessPoint.10.IsolationEnable
+          type: dataModel
+        - name: secure24_bss_active
+          reference: Device.WiFi.SSID.9.Enable
+          type: dataModel
+        - name: open24_bss_active
+          reference: Device.WiFi.SSID.5.Enable
+          type: dataModel
+      Protocol: HTTP
+      ReportingAdjustments:
+        FirstReportingInterval: 300.0
+      Version: "0.6"
+      Description: XfinityWIFI_SYNC to capture XWIFI info every 12 hours
+      EncodingType: JSON
+      ReportingInterval: 86400.0
+      TimeReference: "0001-01-01T00:00:00Z"
+    versionHash: d9c6f386
+subdoc_name: telemetry
+version: 3326854160
+transaction_id: 15820

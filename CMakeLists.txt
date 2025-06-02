@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
 project(littlesheens C)
 
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -std=c99 -fno-asynchronous-unwind-tables -ffunction-sections -I ${CMAKE_SOURCE_DIR} -fPIC")
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED YES)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-unused-value -fno-asynchronous-unwind-tables -ffunction-sections -I ${CMAKE_SOURCE_DIR} -fPIC")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -ldl")
+add_definitions(-D_POSIX_C_SOURCE=200809L)
+add_definitions(-D_XOPEN_SOURCE=500)
+add_definitions(-D__USE_GNU)
 
 if (APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOSX -Wno-unused-but-set-variable")
@@ -28,6 +32,20 @@ endif()
 find_package(CURL)
 if(NOT CURL_FOUND)
   message(FATAL_ERROR "libcurl is required but not found.")
+endif()
+
+find_library(YAML_LIBRARY NAMES yaml libyaml)
+find_path(YAML_INCLUDE_DIR yaml.h)
+if (NOT YAML_LIBRARY OR NOT YAML_INCLUDE_DIR)
+    message(FATAL_ERROR "libyaml-dev not found.")
+endif()
+
+find_library(RBUS_LIBRARY NAMES rbus HINTS "/usr/lib")
+find_path(RBUS_INCLUDE_DIR NAMES rbus.h HINTS "/usr/include/rbus")
+find_path(RTMSG_INCLUDE_DIR NAMES rtMessage.h HINTS "/usr/include/rtmessage")
+
+if (NOT RBUS_LIBRARY OR NOT RBUS_INCLUDE_DIR OR NOT RTMSG_INCLUDE_DIR)
+    message(FATAL_ERROR "rbus library or headers not found.")
 endif()
 
 # Duktape configuration
@@ -55,10 +73,11 @@ endif()
 
 # libduktape shared library
 add_library(duktape SHARED 
-    ${DUK_SRC}/duktape.c 
+    ${DUK_SRC}/duktape.c
     ${DUK_EXTRAS}/print-alert/duk_print_alert.c
     ${DUK_EXTRAS}/module-duktape/duk_module_duktape.c
     ${DUK_EXTRAS}/module-node/duk_module_node.c
+    ${DUK_EXTRAS}/console/duk_console.c
 )
 target_include_directories(duktape PRIVATE ${DUK_SRC} ${DUK_EXTRAS})
 target_link_libraries(duktape PRIVATE m)
@@ -68,12 +87,14 @@ add_library(machines SHARED
     machines.c 
     machines_js.c
 )
-target_include_directories(machines PRIVATE ${DUK_SRC} ${DUK_EXTRAS}/print-alert ${DUK_EXTRAS}/module-duktape ${DUK_EXTRAS}/module-node)
+target_include_directories(machines PRIVATE ${DUK_SRC} ${DUK_EXTRAS}/print-alert ${DUK_EXTRAS}/module-duktape ${DUK_EXTRAS}/module-node ${DUK_EXTRAS}/console)
 target_link_libraries(machines PRIVATE duktape)
 
 file(GLOB JS_FILES "${JS_DIR}/*.js")
 file(GLOB LIB_JS_FILES "${LIB_DIR}/*.js")
 set(JSFILES "${JS_FILES}" "${LIB_JS_FILES}" "${CMAKE_SOURCE_DIR}/driver.js")
+
+file(COPY "${CMAKE_SOURCE_DIR}/telemetry/" DESTINATION ${CMAKE_BINARY_DIR})
 
 # Custom command for machines.js and machines_js.c
 add_custom_command(
@@ -128,8 +149,8 @@ file(GLOB LIB_SRCS "${LIB_DIR}/*.c")
 foreach(src ${LIB_SRCS})
     get_filename_component(filename ${src} NAME_WE)
     add_library(${filename} SHARED ${src})
-    target_include_directories(${filename} PRIVATE ${DUK_SRC})
-    target_link_libraries(${filename} PRIVATE duktape curl)
+    target_include_directories(${filename} PRIVATE ${DUK_SRC} ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
+    target_link_libraries(${filename} PRIVATE duktape curl ${RBUS_LIBRARY} ${YAML_LIBRARY})
     set_target_properties(${filename} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
 endforeach()
 

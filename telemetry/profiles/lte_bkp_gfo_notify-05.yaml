@@ -1,0 +1,85 @@
+---
+Description: LTE Backup Failover Notification from XLE
+Version: ".05"
+Protocol: RBUS_METHOD
+EncodingType: JSON
+GenerateNow: false
+TimeReference: '0001-01-01T00:00:00Z'
+Parameter:
+- type: dataModel
+  reference: Profile.Name
+  reportEmpty: true
+- type: dataModel
+  reference: Profile.Version
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_SystemTime
+  name: timestamp
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.ProductClass
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_COMCAST-COM_CM_MAC
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.1.MacAddress
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.2.MacAddress
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.GatewayRestoreAttemptCount
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.1.OperationStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.2.OperationStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.1.ActiveStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.2.ActiveStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_WanManager.InterfaceAvailableStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_WanManager.InterfaceActiveStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_Remote.Device.2.Status
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.SerialNumber
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.SoftwareVersion
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.chargingStatus
+  reportEmpty: true
+TriggerCondition:
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.2.ActiveStatus
+  operator: any
+  minThresholdDuration: 0
+  report: true
+RBUS_METHOD:
+  Method: Device.X_RDK_Xmidt.SendData
+  Parameters:
+  - name: msg_type
+    value: event
+  - name: source
+    value: telemetry2
+  - name: dest
+    value: event:LTE-Notify
+  - name: content_type
+    value: application/json
+  - name: qos
+    value: '22'
+JSONEncoding:
+  ReportFormat: NameValuePair
+  ReportTimestamp: None

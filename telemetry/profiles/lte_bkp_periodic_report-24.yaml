@@ -1,0 +1,123 @@
+---
+Description: Periodic status report from XLE
+Version: ".24"
+Protocol: RBUS_METHOD
+EncodingType: JSON
+ReportingInterval: 300
+GenerateNow: false
+TimeReference: '0001-01-01T00:00:00Z'
+Parameter:
+- type: dataModel
+  reference: Profile.Name
+  reportEmpty: true
+- type: dataModel
+  reference: Profile.Version
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_SystemTime
+  name: timestamp
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.ProductClass
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_COMCAST-COM_CM_MAC
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.1.MacAddress
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.2.MacAddress
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.GatewayRestoreAttemptCount
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.1.OperationStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.2.OperationStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.1.ActiveStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_GatewayManagement.Gateway.2.ActiveStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_WanManager.InterfaceAvailableStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_WanManager.InterfaceActiveStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.X_RDK_Remote.Device.2.Status
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.supported
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.batteryHealth
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.batteryStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.chargingStatus
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.estimatedChargeRemaining
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.estimatedMinutesRemaining
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.secondsOnBattery
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.batteryCapacity
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.serialNumber
+  reportEmpty: true
+- type: dataModel
+  reference: Device.Cellular.X_RDK_Status
+  reportEmpty: true
+- type: dataModel
+  reference: Device.Cellular.X_RDK_Enable
+  reportEmpty: true
+- type: dataModel
+  reference: Device.Cellular.Interface.1.X_RDK_RadioEnvConditions
+  reportEmpty: true
+- type: dataModel
+  reference: Device.Cellular.Interface.1.RSSI
+  reportEmpty: true
+- type: dataModel
+  reference: Device.Cellular.Interface.1.X_RDK_SNR
+  reportEmpty: true
+- type: dataModel
+  reference: Device.Cellular.Interface.1.RSRP
+  reportEmpty: true
+- type: dataModel
+  reference: Device.Cellular.Interface.1.RSRQ
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.SerialNumber
+  reportEmpty: true
+- type: dataModel
+  reference: Device.DeviceInfo.SoftwareVersion
+  reportEmpty: true
+RBUS_METHOD:
+  Method: Device.X_RDK_Xmidt.SendData
+  Parameters:
+  - name: msg_type
+    value: event
+  - name: source
+    value: telemetry2
+  - name: dest
+    value: event:lte_bkp_periodic_report
+  - name: content_type
+    value: application/json
+JSONEncoding:
+  ReportFormat: NameValuePair
+  ReportTimestamp: None
