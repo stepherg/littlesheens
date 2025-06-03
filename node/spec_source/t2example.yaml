@@ -1,0 +1,35 @@
+name: t2example
+doc: none
+parsepatterns: true
+nodes:
+  start:
+    branching:
+      branches:
+        - target: generateNow
+  generateNow:
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"action":"generateReport()"});
+        return _.bindings;
+    branching:
+      branches:
+        - target: firstInterval
+  firstInterval:
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"action":"generateReport()"});
+        return _.bindings;
+    branching:
+      branches:
+        - target: periodic
+  periodic:
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"action":"generateReport()"});
+        return _.bindings;
+    branching:
+      branches:
+        - target: periodic

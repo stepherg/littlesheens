@@ -1,4 +1,11 @@
 {
+  "name": "node-automations",
+  "version": "0.0.1",
+  "scripts": {
+    "start": "./nodemodify.sh; ./build_specs.sh; node --trace-uncaught index.js",
+    "convert": "./build_specs.sh"
+  },
+
   "dependencies": {
     "littlesheens": "file:node-littlesheens",
     "safe-eval": "^0.4.1"
