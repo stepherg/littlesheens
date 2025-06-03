@@ -32,7 +32,7 @@ var sandbox = function(code) {
 EOF
 
 for F in prof match sandbox step; do 
-    cat js/$F.js >> $TARGET/index.js
+    cat ../js/$F.js >> $TARGET/index.js
 done
 
 cat<<EOF >> $TARGET/index.js
@@ -58,4 +58,7 @@ cat<<EOF > $TARGET/package.json
 EOF
 
 echo "Wrote $TARGET"
+
+echo "Now run:  'npm link ./node-littlesheens'"
+
 
