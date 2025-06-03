@@ -6,6 +6,8 @@
 // Helper: Convert libyaml node to Duktape object
 static duk_idx_t yaml_document_to_js(duk_context *ctx, yaml_document_t *doc, yaml_node_t *node)
 {
+   const char *str = NULL;
+
    if (!node)
    {
       duk_push_null(ctx);
@@ -15,7 +17,19 @@ static duk_idx_t yaml_document_to_js(duk_context *ctx, yaml_document_t *doc, yam
    switch (node->type)
    {
    case YAML_SCALAR_NODE:
-      duk_push_string(ctx, (const char *)node->data.scalar.value);
+      str = (const char *)node->data.scalar.value;
+
+      // test for boolean
+      if ((strcmp(str, "true") == 0) ||
+            (strcmp(str, "True") == 0) || 
+            (strcmp(str, "TRUE") == 0))
+         duk_push_boolean(ctx, 1); // Push true
+      else if ((strcmp(str, "false") == 0)  ||
+            (strcmp(str, "False") == 0) ||
+            (strcmp(str, "FALSE") == 0))
+         duk_push_boolean(ctx, 0); 
+      else
+         duk_push_string(ctx, str);
       break;
    case YAML_SEQUENCE_NODE:
    {
@@ -59,7 +73,13 @@ static void js_to_yaml_emitter(duk_context *ctx, duk_idx_t idx, yaml_emitter_t *
 {
    yaml_event_t event;
 
-   if (duk_is_string(ctx, idx))
+   if (duk_is_boolean(ctx, idx))
+   {
+      const char *value = duk_get_boolean(ctx, idx) ? "true" : "false";
+      yaml_scalar_event_initialize(&event, NULL, (yaml_char_t *)"tag:yaml.org,2002:bool", (yaml_char_t *)value, strlen(value), 1, 1, YAML_PLAIN_SCALAR_STYLE);
+      yaml_emitter_emit(emitter, &event);
+   }
+   else if (duk_is_string(ctx, idx))
    {
       const char *value = duk_get_string(ctx, idx);
       yaml_scalar_event_initialize(&event, NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)value, strlen(value), 1, 1, YAML_PLAIN_SCALAR_STYLE);
@@ -70,12 +90,6 @@ static void js_to_yaml_emitter(duk_context *ctx, duk_idx_t idx, yaml_emitter_t *
       char buffer[32];
       snprintf(buffer, sizeof(buffer), "%g", duk_get_number(ctx, idx));
       yaml_scalar_event_initialize(&event, NULL, (yaml_char_t *)"tag:yaml.org,2002:float", (yaml_char_t *)buffer, strlen(buffer), 1, 1, YAML_PLAIN_SCALAR_STYLE);
-      yaml_emitter_emit(emitter, &event);
-   }
-   else if (duk_is_boolean(ctx, idx))
-   {
-      const char *value = duk_get_boolean(ctx, idx) ? "true" : "false";
-      yaml_scalar_event_initialize(&event, NULL, (yaml_char_t *)"tag:yaml.org,2002:bool", (yaml_char_t *)value, strlen(value), 1, 1, YAML_PLAIN_SCALAR_STYLE);
       yaml_emitter_emit(emitter, &event);
    }
    else if (duk_is_array(ctx, idx))
