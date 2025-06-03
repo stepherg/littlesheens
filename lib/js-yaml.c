@@ -1,7 +1,31 @@
 #include <duktape.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
 #include <string.h>
 #include "yaml.h"
+
+static int push_duk_integer(const char *str, duk_context *ctx) {
+   char *endptr;
+   int value;
+   value = strtol(str, &endptr, 10);
+   if (*endptr == '\0' && str != endptr) {
+      duk_push_int(ctx, value);
+      return 1;
+   } else
+      return 0;
+}
+
+static int push_duk_float(const char *str, duk_context *ctx) {
+   char *endptr;
+   int value;
+   value = strtof(str, &endptr);
+   if (*endptr == '\0' && str != endptr) {
+      duk_push_number(ctx, value);
+      return 1;
+   } else
+      return 0;
+}
 
 // Helper: Convert libyaml node to Duktape object
 static duk_idx_t yaml_document_to_js(duk_context *ctx, yaml_document_t *doc, yaml_node_t *node)
@@ -22,14 +46,17 @@ static duk_idx_t yaml_document_to_js(duk_context *ctx, yaml_document_t *doc, yam
       // test for boolean
       if ((strcmp(str, "true") == 0) ||
             (strcmp(str, "True") == 0) || 
-            (strcmp(str, "TRUE") == 0))
+            (strcmp(str, "TRUE") == 0)) {
          duk_push_boolean(ctx, 1); // Push true
-      else if ((strcmp(str, "false") == 0)  ||
+      } else if ((strcmp(str, "false") == 0)  ||
             (strcmp(str, "False") == 0) ||
-            (strcmp(str, "FALSE") == 0))
+            (strcmp(str, "FALSE") == 0)) {
          duk_push_boolean(ctx, 0); 
-      else
+      } else if (push_duk_integer(str, ctx)){
+      } else if (push_duk_float(str, ctx)){
+      } else {
          duk_push_string(ctx, str);
+      }
       break;
    case YAML_SEQUENCE_NODE:
    {
