@@ -38,7 +38,7 @@ function Profile(profile) {
    // Generate NOW
    if (Object.prototype.hasOwnProperty.call(profile, 'GenerateNow')) {
       generateNow = profile['GenerateNow'];
-      if (generateNow === 'true') {
+      if (generateNow) {
          this._tasks.push(scheduler.addTask(Profile.prototype._generateReport.bind(null, this), 0));
       }
    }
