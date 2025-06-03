@@ -32,17 +32,66 @@
 #include "machines_js.h"
 
 typedef struct {
+   RegisterFunc register_func;
+   CloseFunc close_func;
+   void *lib_handle;
+   int inUse;
+} tFunctionHandle;
+
+typedef struct {
    duk_context *dctx;
    mach_provider provider;
    mach_mode provider_mode;
    void *provider_ctx;
-   void *func_handle;
 } Ctx;
+
+#define MAX_REG_HANDLES 50
+static tFunctionHandle func_handles[MAX_REG_HANDLES];
 
 /* ctx is a global, shared context object. */
 static Ctx *ctx = NULL;
 
 static int register_c_funcs(Ctx *ctx);
+
+static tFunctionHandle *alloc_handle(void)
+{
+   int idx = 0;
+   for (idx = 0; idx < MAX_REG_HANDLES; idx++)
+   {
+      if (!func_handles[idx].inUse)
+      {
+         func_handles[idx].inUse = 1;
+         return &func_handles[idx];
+      }
+   }
+   return NULL;
+}
+
+static void free_handle(tFunctionHandle *handle)
+{
+   if (handle->lib_handle)
+   {
+      dlclose(handle->lib_handle);
+   }
+
+   memset(handle, 0, sizeof(tFunctionHandle));
+}
+
+static void close_handles(duk_context *ctx)
+{
+   int idx = 0;
+   for (idx = 0; idx < MAX_REG_HANDLES; idx++)
+   {
+      if (func_handles[idx].inUse)
+      {
+         if (func_handles[idx].close_func)
+         {
+            func_handles[idx].close_func(ctx);
+         }
+         free_handle(&func_handles[idx]);
+      }
+   }
+}
 
 static char *read_file_as_string(const char *filename)
 {
@@ -104,6 +153,7 @@ void *mach_make_ctx() {
    void *ret = malloc(sizeof(Ctx));
 
    memset(ret, 0, sizeof(Ctx));
+   memset(&func_handles, 0, sizeof(tFunctionHandle) * MAX_REG_HANDLES);
 
    return ret;
 }
@@ -285,13 +335,11 @@ int mach_open() {
 /* API: mach_close, which is an exposed library function, releases the
    ECMAScript heap. */
 void mach_close() {
-   if (ctx && ctx->dctx) {
+   if (ctx && ctx->dctx)
+   {
+      close_handles(ctx->dctx);
       duk_destroy_heap(ctx->dctx);
       ctx->dctx = NULL;
-   }
-   if (ctx && ctx->func_handle) {
-      dlclose(ctx->func_handle);
-      ctx->func_handle = NULL;
    }
 }
 
@@ -543,25 +591,35 @@ int mach_crew_update(JSON crew, JSON stepped, JSON dst, size_t limit) {
 }
 
 static void load_and_register_functions(Ctx *ctx, const char *path) {
-   ctx->func_handle = dlopen(path, RTLD_LAZY);
-   if (!ctx->func_handle) {
+   tFunctionHandle *handle = alloc_handle();
+   if (handle == NULL) {
+      printf("Error: Failed to allocate handle\n");
+      return;
+   }
+
+   handle->lib_handle = dlopen(path, RTLD_LAZY);
+   if (!handle->lib_handle)
+   {
       printf("Failed to load %s: %s\n", path, dlerror());
       return;
    }
 
    // Clear any existing dlerror
    dlerror();
-   RegisterFunc reg_func = dlsym(ctx->func_handle, "register_function");
+   handle->register_func = dlsym(handle->lib_handle, "register_function");
    char *error = dlerror();
    if (error != NULL) {
-      printf("Failed to find register_functions in %s: %s\n", path, error);
-      dlclose(ctx->func_handle);
-      ctx->func_handle = NULL;
+      printf("Failed to find register_function in %s: %s\n", path, error);
+      free_handle(handle);
       return;
    }
 
-   if (reg_func) {
-      reg_func(ctx->dctx);
+   // Set the close function, but we won't check for errors since all modules won't implement this
+   handle->close_func = dlsym(handle->lib_handle, "close_function");
+
+   if (handle->register_func)
+   {
+      handle->register_func(ctx->dctx);
    }
 }
 

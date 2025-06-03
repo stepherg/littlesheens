@@ -18,7 +18,8 @@ typedef struct
    int active;    // 0 if cleared
    int repeat;    // 1 for setInterval, 0 for setTimeout
    long delay_ms; // Delay in milliseconds
-   int inUse;
+   int in_use;
+   pthread_cond_t cond;
 } duk_timer_t;
 
 static pthread_mutex_t timer_mutex;
@@ -40,9 +41,15 @@ static duk_timer_t *alloc_timer()
    int slot = -1;
    for (int i = 0; i < MAX_TIMERS; i++)
    {
-      if (!timers[i].inUse)
+      if (!timers[i].in_use)
       {
          slot = i;
+         if (pthread_cond_init(&timers[i].cond, NULL) != 0)
+         {
+            fprintf(stderr, "Failed to initialize condition variable %d\n", i);
+            pthread_mutex_unlock(&timer_mutex);
+            return NULL;
+         }
          break;
       }
    }
@@ -55,7 +62,7 @@ static duk_timer_t *alloc_timer()
    }
 
    timers[slot].id = slot + 1;
-   timers[slot].inUse = 1;
+   timers[slot].in_use = 1;
    pthread_mutex_unlock(&timer_mutex);
    return &timers[slot];
 }
@@ -63,17 +70,24 @@ static duk_timer_t *alloc_timer()
 static void free_timer(int id)
 {
    pthread_mutex_lock(&timer_mutex);
+   pthread_cond_destroy(&timers[id - 1].cond);
    memset((void *)&timers[id - 1], 0, sizeof(duk_timer_t));
    pthread_mutex_unlock(&timer_mutex);
 }
 
-// Helper: Sleep for milliseconds
-static void ms_sleep(long ms)
+static int get_timer_count()
 {
-   struct timespec ts;
-   ts.tv_sec = ms / 1000;
-   ts.tv_nsec = (ms % 1000) * 1000000;
-   nanosleep(&ts, NULL);
+   pthread_mutex_lock(&timer_mutex);
+   int cnt = 0;
+   for (int i = 0; i < MAX_TIMERS; i++)
+   {
+      if (timers[i].in_use)
+      {
+         cnt++;
+      }
+   }
+   pthread_mutex_unlock(&timer_mutex);
+   return cnt;
 }
 
 // Timer thread function
@@ -81,10 +95,28 @@ static void *timer_thread(void *arg)
 {
    duk_timer_t *timer = (duk_timer_t *)arg;
 
+   struct timespec timeout;
+   struct timespec now;
+
    while (1)
    {
-      ms_sleep(timer->delay_ms);
+      // Get current time
+      clock_gettime(CLOCK_REALTIME, &now);
+
+      // Convert milliseconds to seconds and nanoseconds
+      int wait_secs = timer->delay_ms / 1000;
+      int wait_nsecs = (timer->delay_ms % 1000) * 1000000;
+      timeout.tv_sec = now.tv_sec + wait_secs;
+      timeout.tv_nsec = now.tv_nsec + wait_nsecs;
+      // Handle nanosecond overflow
+      if (timeout.tv_nsec >= 1000000000)
+      {
+         timeout.tv_sec += 1;
+         timeout.tv_nsec -= 1000000000;
+      }
+
       pthread_mutex_lock(&timer_mutex);
+      pthread_cond_timedwait(&timer->cond, &timer_mutex, &timeout);
       if (!timer->active)
       {
          pthread_mutex_unlock(&timer_mutex);
@@ -249,7 +281,8 @@ static duk_ret_t duk_clear_timer(duk_context *ctx)
       duk_del_prop_index(ctx, -1, timer_id);
    }
    duk_pop_2(ctx);
-   timers[timer_id-1].active = 0;
+   timers[timer_id - 1].active = 0;
+   pthread_cond_signal(&timers[timer_id - 1].cond);
    pthread_mutex_unlock(&timer_mutex);
 
    return 0;
@@ -279,4 +312,14 @@ duk_idx_t register_function(duk_context *ctx)
    pthread_mutexattr_destroy(&mutex_attr);
 
    return 1;
+}
+
+void close_function(duk_context *ctx)
+{
+   while (get_timer_count() > 0)
+   {
+      sleep(1);
+   }
+
+   pthread_mutex_destroy(&timer_mutex);
 }
