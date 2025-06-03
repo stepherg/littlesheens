@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "littlesheens": "file:node-littlesheens",
+    "safe-eval": "^0.4.1"
+  }
+}
