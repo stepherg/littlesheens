@@ -8,7 +8,7 @@ function print() {
 
 var Cfg = {
    MaxSteps: 100,
-   debug: true,
+   debug: false,
    fire: function (id) { 
       //console.log("got it: "+id); 
       var result= process_input(crew, {event: id});

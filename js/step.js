@@ -74,7 +74,7 @@ function step(ctx, spec, state, message) {
       var consuming = false;
       if (branching.type == "message") {
          if (!message) {
-            print("no message");
+            //print("no message");
             return null;
          }
          consuming = true;
@@ -84,7 +84,7 @@ function step(ctx, spec, state, message) {
       for (var i = 0; i < branches.length; i++) {
          var branch = branches[i];
 
-         print(branch);
+         if (ctx.debug) print(branch);
 
          //
          // pattern
@@ -126,7 +126,7 @@ function step(ctx, spec, state, message) {
          //
          var timer= branch.target.timer;
          if (timer) {
-            print("SETTING TIMER TIMER: ",timer, bs['_id']);
+            if (ctx.debug) print("SCHEDULING TIMER: ", bs['_id'], timer.delay);
             //  branch later
             setTimeout(function () {
                ctx.fire(timer.id);
