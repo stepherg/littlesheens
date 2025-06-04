@@ -8,7 +8,13 @@ function print() {
 
 var Cfg = {
    MaxSteps: 100,
-   debug: true
+   debug: true,
+   fire: function (id) { 
+      //console.log("got it: "+id); 
+      var result= process_input(crew, {event: id});
+      print(result.emitted);
+      crew = result.crew;
+   }
 };
 
 var Stats = {
@@ -24,8 +30,6 @@ var Stats = {
 function GetSpec(filename) {
    return JSON.parse(fs.readFileSync(filename, 'utf8'));
 }
-
-
 
 //
 // CrewProcess
@@ -137,6 +141,9 @@ function CrewUpdate(crew_js, steppeds_js) {
    }
 }
 
+//
+// process_input
+//
 function process_input(crew, message) {
    var message = JSON.stringify(message);
 
@@ -152,13 +159,19 @@ function process_input(crew, message) {
    return result;
 }
 
+function genRandomId(length) { 
+   return Math.random().toString(36).substring(2, length + 2); 
+}
+
+
+var id = "t2example-"+genRandomId(5);
 
 var crew = JSON.stringify({
    id:"simpsons",
    machines:{
 //      doubler:{spec:"specs/double.js",node:"listen",bs:{count:0}},
 //      turnstile:{spec:"specs/turnstile.js",node:"locked",bs:{}},
-      t2example:{spec:"specs/t2example.js",node:"start",bs:{}}
+      t2example:{spec:"specs/t2example.js",node:"start",bs:{_id: id}}
    }
 });
 
@@ -186,10 +199,9 @@ crew = result.crew;
 //print(crew);
 */
 
-result = process_input(crew, {timer:100});
+result = process_input(crew, {});
 print(result.emitted);
 crew = result.crew;
-print(crew);
 
 /*
 
@@ -218,3 +230,9 @@ steppeds = CrewProcess(crew, message);
 print(GetEmitted(steppeds));
 crew = CrewUpdate(crew, steppeds); 
 */
+
+// Clear all tasks after 15 seconds
+setTimeout(function () {
+   console.log('wrapping up');
+   exit();
+}, 30000);

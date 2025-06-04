@@ -11,55 +11,70 @@ nodes:
     action:
       interpreter: ecmascript
       source: |-
-        _.log("******hey there******", 45);
-        _.out({"go":"way"});
+        var bs = _.bindings;
+        //_.log(bs['_id']);
+        _.out({"did":"generateNow"});
         return _.bindings;
     branching:
       branches:
-        - target: firstInterval
-          timer: 300
+        # set first interval timer
+        - target: 
+            dest: firstInterval
+            # set timer event
+            timer: 
+              delay: 3000
+              id: timer-firstInterval
 
   firstInterval:
     action:
       interpreter: ecmascript
       source: |-
-        console.log("hey there");
-        _.out({timer: 2});
-        _.bindings.count++;
+        var bs = _.bindings;
+        //_.log(bs['_id']);
+        _.out({"did":"firstInterval"});
         return _.bindings;
     branching:
+      type: message
       branches:
+        # when the event comes in, transition
         - pattern: |
-            {"timer":"?id"}
-          target: periodic
-          timer: 300
+            {"event":"timer-firstInterval"}
+          target: schedulePeriodic
+
+  schedulePeriodic:
+    branching:
+      branches:
+        # set first interval timer
+        - target: 
+            dest: periodic
+            # set timer event
+            timer: 
+              delay: 5000
+              #delay: 86400
+              id: timer-periodic
 
   periodic:
     action:
       interpreter: ecmascript
       source: |-
-        _.out({"action":"generateReport()"});
+        var bs = _.bindings;
+        //_.log(bs['_id']);
+        _.out({"did":"periodic"});
         return _.bindings;
     branching:
+      type: message
       branches:
+        # when the event comes in, transition
         - pattern: |
-            {"timer":"?id"}
-          guard:
-            interpreter: ecmascript
-            source: |-
-              var bs = _.bindings;
-              var f = parseFloat(bs["?id"]);
-              if (isNaN(f)) {
-                return "";
-              }
-              bs["?x"] = f;
-              return bs;
-          timer: 86400
-          target: periodic
+            {"event":"timer-periodic"}
+          target: schedulePeriodic
+        #- pattern: |
+        #    {"event":"stop"}
+        #  target: stop
 
   stop:
     action:
       interpreter: ecmascript
       source: |-
-        _.out({"action":"stop"});
+        _.out({"action":"stopped"});
         return _.bindings;
