@@ -141,25 +141,26 @@ add_executable(driver driver.c util.c)
 target_include_directories(driver PRIVATE ${DUK_SRC})
 target_link_libraries(driver PRIVATE machines duktape)
 
+if (NOT RBUS_LIBRARY OR NOT RBUS_INCLUDE_DIR OR NOT RTMSG_INCLUDE_DIR)
+    message(WARNING "RBUS not found... building stubs")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-typedef-redefinition")
+    set(RBUS_INCLUDE_DIR "${LIB_DIR}/rbus/include")
+    set(RTMSG_INCLUDE_DIR "${LIB_DIR}/rbus/include")
+    file(GLOB RBUS_SRCS "${LIB_DIR}/rbus/*.c")
+    add_library(rbus SHARED ${RBUS_SRCS})
+    target_include_directories(rbus PRIVATE ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
+    set(RBUS_LIBRARY rbus)
+endif()
+
 # Dynamic libraries from lib directory
 file(GLOB LIB_SRCS "${LIB_DIR}/*.c")
 foreach(src ${LIB_SRCS})
     get_filename_component(filename ${src} NAME_WE)
     add_library(${filename} SHARED ${src})
-    target_include_directories(${filename} PRIVATE ${DUK_SRC} ${YAML_INCLUDE_DIR})
-    target_link_libraries(${filename} PRIVATE duktape curl ${YAML_LIBRARY})
+    target_include_directories(${filename} PRIVATE ${DUK_SRC} ${YAML_INCLUDE_DIR} ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
+    target_link_libraries(${filename} PRIVATE duktape curl ${YAML_LIBRARY} ${RBUS_LIBRARY})
     set_target_properties(${filename} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
 endforeach()
-
-if (RBUS_LIBRARY AND RBUS_INCLUDE_DIR AND RTMSG_INCLUDE_DIR)
-    set(RBUS_SRCS "${LIB_DIR}/rbus/rbus_duktape.c")
-    add_library(rbus_duktape SHARED ${RBUS_SRCS})
-    target_include_directories(rbus_duktape PRIVATE ${DUK_SRC} ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
-    target_link_libraries(rbus_duktape PRIVATE duktape ${RBUS_LIBRARY})
-    set_target_properties(rbus_duktape PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
-else()
-    message(STATUS "RBUS not found")
-endif()
 
 
 # Main target

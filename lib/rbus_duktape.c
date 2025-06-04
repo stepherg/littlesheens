@@ -7,6 +7,7 @@
 
 // Global Duktape context for handlers
 static duk_context *global_ctx = NULL;
+static rbusHandle_t rbus_handle = NULL;
 
 // Structure to hold rbus handle in Duktape context stash
 typedef struct
@@ -23,6 +24,7 @@ typedef struct
 // Helper to get rbus handle from stash
 static rbusHandle_t get_rbus_handle(duk_context *ctx)
 {
+#if 0   
    duk_push_global_stash(ctx);
    if (duk_has_prop_string(ctx, -1, "rbus_handle"))
    {
@@ -33,8 +35,23 @@ static rbusHandle_t get_rbus_handle(duk_context *ctx)
    }
    duk_pop(ctx);
    return NULL;
+#else
+   if (rbus_handle == NULL)
+   {
+      rbusError_t err = rbus_open(&rbus_handle, "littlesheens");
+      if (err != RBUS_ERROR_SUCCESS)
+      {
+         fprintf(stderr, "rbus_open failed: %d", err);
+         return NULL;
+      }
+   }
+   return rbus_handle;
+
+#endif
+
 }
 
+#if 0
 // Helper to store rbus handle in stash
 static void store_rbus_handle(duk_context *ctx, rbusHandle_t handle)
 {
@@ -45,6 +62,7 @@ static void store_rbus_handle(duk_context *ctx, rbusHandle_t handle)
    duk_put_prop_string(ctx, -2, "rbus_handle");
    duk_pop(ctx);
 }
+#endif
 
 static void rbusObject_to_jsObject(duk_context *ctx, rbusObject_t obj)
 {
@@ -152,17 +170,17 @@ static void event_handler(rbusHandle_t handle, rbusEvent_t const *event, rbusEve
 
 static duk_ret_t duk_rbus_open(duk_context *ctx, const char *componentName)
 {
-   rbusError_t err;
 
 #if 1
-   err = rbus_openBrokerConnection(componentName);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_openBrokerConnection(componentName);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_open failed: %d", err);
    }
 
 #else
 
+   rbusError_t err;
    rbusHandle_t handle;
    err = rbus_open(&handle, componentName);
    if (err != RBUS_ERROR_SUCCESS)
@@ -176,32 +194,6 @@ static duk_ret_t duk_rbus_open(duk_context *ctx, const char *componentName)
    global_ctx = ctx; // Set global context
 
    duk_push_true(ctx);
-   return 1;
-}
-
-static duk_ret_t duk_rbus_close(duk_context *ctx)
-{
-#if 1
-   rbus_closeBrokerConnection();
-#else
-   rbusHandle_t handle = get_rbus_handle(ctx);
-   if (!handle)
-   {
-      duk_error(ctx, DUK_ERR_ERROR, "No rbus handle found");
-   }
-   rbusError_t err = rbus_close(handle);
-   if (err != RBUS_ERROR_SUCCESS)
-   {
-      duk_error(ctx, DUK_ERR_ERROR, "rbus_close failed: %d", err);
-   }
-   duk_push_global_stash(ctx);
-   duk_get_prop_string(ctx, -1, "rbus_handle");
-   rbus_context_t *rbus_ctx = (rbus_context_t *)duk_get_pointer(ctx, -1);
-   free(rbus_ctx);
-   duk_del_prop_string(ctx, -2, "rbus_handle");
-   duk_pop(ctx);
-   duk_push_true(ctx);
-#endif
    return 1;
 }
 
@@ -313,8 +305,7 @@ static rbusObject_t jsObject_to_rbusObject(duk_context *ctx, duk_idx_t idx)
 
 static duk_ret_t duk_rbus_invoke_method(duk_context *ctx)
 {
-   // Retrieve the RBus handle from the stash (assumed to be stored there)
-   rbusHandle_t handle = get_rbus_handle(ctx); // Assume this helper exists
+   rbusHandle_t handle = get_rbus_handle(ctx);
    if (!handle)
    {
       duk_error(ctx, DUK_ERR_ERROR, "No rbus handle found");
@@ -450,9 +441,9 @@ static duk_ret_t duk_rbus_register_obj(duk_context *ctx)
       duk_error(ctx, DUK_ERR_TYPE_ERROR, "objectName must be a string");
    }
    const char *objectName = duk_get_string(ctx, 0);
-   rbusError_t err = rbus_registerObj(objectName, callback, NULL);
+   rbusCoreError_t err = rbus_registerObj(objectName, callback, NULL);
 
-   if (err != RBUS_ERROR_SUCCESS)
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_registerObj failed: %d", err);
    }
@@ -467,8 +458,8 @@ static duk_ret_t duk_rbus_unregister_obj(duk_context *ctx)
       duk_error(ctx, DUK_ERR_TYPE_ERROR, "objectName must be a string");
    }
    const char *objectName = duk_get_string(ctx, 0);
-   rbusError_t err = rbus_unregisterObj(objectName);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_unregisterObj(objectName);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_unregisterObj failed: %d", err);
    }
@@ -484,8 +475,8 @@ static duk_ret_t duk_rbus_add_element(duk_context *ctx)
    }
    const char *objectName = duk_get_string(ctx, 0);
    const char *elementName = duk_get_string(ctx, 1);
-   rbusError_t err = rbus_addElement(objectName, elementName);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_addElement(objectName, elementName);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_addElement failed: %d", err);
    }
@@ -501,8 +492,8 @@ static duk_ret_t duk_rbus_remove_element(duk_context *ctx)
    }
    const char *objectName = duk_get_string(ctx, 0);
    const char *elementName = duk_get_string(ctx, 1);
-   rbusError_t err = rbus_removeElement(objectName, elementName);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_removeElement(objectName, elementName);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_removeElement failed: %d", err);
    }
@@ -616,8 +607,8 @@ static duk_ret_t duk_rbus_register_event(duk_context *ctx)
       duk_error(ctx, DUK_ERR_TYPE_ERROR, "eventName must be a string");
    }
    // rbusError_t err = rbus_registerEvent(objectName, eventName, sub1_callback, ctx);
-   rbusError_t err = rbus_registerEvent(objectName, eventName, NULL, ctx);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_registerEvent(objectName, eventName, NULL, ctx);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_registerEvent failed: %d", err);
    }
@@ -634,8 +625,8 @@ static duk_ret_t duk_rbus_unregister_event(duk_context *ctx)
 
    const char *objectName = duk_get_string(ctx, 0);
    const char *eventName = duk_get_string(ctx, 1);
-   rbusError_t err = rbus_unregisterEvent(objectName, eventName);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_unregisterEvent(objectName, eventName);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_unregisterEvent failed: %d", err);
    }
@@ -672,8 +663,8 @@ static duk_ret_t duk_rbus_subscribe(duk_context *ctx)
    duk_put_prop_string(ctx, -2, eventName);
    duk_pop(ctx);
 
-   // rbusError_t err = rbusEvent_Subscribe(handle, eventName, event_handler, ctx, 0);
-   rbusError_t err = rbusEvent_SubscribeAsync(handle, eventName, event_handler, handlerAsyncSub, ctx, 0);
+   rbusError_t err = rbusEvent_Subscribe(handle, eventName, event_handler, ctx, 0);
+   //rbusError_t err = rbusEvent_SubscribeAsync(handle, eventName, event_handler, handlerAsyncSub, ctx, 0);
    if (err != RBUS_ERROR_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbusEvent_Subscribe failed: %d", err);
@@ -697,8 +688,8 @@ static duk_ret_t duk_rbus_subscribe_to_event(duk_context *ctx)
    duk_put_prop_string(ctx, -2, eventName);
    duk_pop(ctx);
 
-   rbusError_t err = rbus_subscribeToEvent(objectName, eventName, event_callback, NULL, ctx, NULL);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_subscribeToEvent(objectName, eventName, event_callback, NULL, ctx, NULL);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_subscribeToEvent failed: %d", err);
    }
@@ -727,8 +718,8 @@ static duk_ret_t duk_rbus_publish_event(duk_context *ctx)
    rbusMessage msg;
    rbusMessage_Init(&msg);
    rbusMessage_SetString(msg, eventMsg);
-   rbusError_t err = rbus_publishEvent(objectName, eventName, msg);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_publishEvent(objectName, eventName, msg);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_publishEvent failed: %d", err);
    }
@@ -741,8 +732,8 @@ static duk_ret_t duk_rbus_discover_registered_components(duk_context *ctx)
 {
    char **componentNameList = NULL;
    int count = 0;
-   rbusError_t err = rbus_discoverRegisteredComponents(&count, &componentNameList);
-   if (err != RBUS_ERROR_SUCCESS)
+   rbusCoreError_t err = rbus_discoverRegisteredComponents(&count, &componentNameList);
+   if (err != RBUSCORE_SUCCESS)
    {
       duk_error(ctx, DUK_ERR_ERROR, "rbus_discoverRegisteredComponents failed: %d", err);
    }
@@ -857,7 +848,7 @@ static rbusError_t table_add_row_handler(rbusHandle_t handle, char const *tableN
    static uint32_t instance = 1;
    *instNum = instance++;
 
-   printf("%s() tableName: %s aliasName: %s instNum: %u\n", __FUNCTION__, tableName, aliasName, *instNum);
+   //printf("%s() tableName: %s aliasName: %s instNum: %u\n", __FUNCTION__, tableName, aliasName, *instNum);
 
    return RBUS_ERROR_SUCCESS;
 
@@ -943,7 +934,7 @@ static duk_ret_t duk_rbus_register_table_row(duk_context *ctx)
 
 static duk_ret_t duk_rbus_set_table_property(duk_context *ctx)
 {
-   if (!duk_is_string(ctx, 0) || !duk_is_string(ctx, 1))
+   if (!duk_is_string(ctx, 0))
    {
       duk_error(ctx, DUK_ERR_TYPE_ERROR, "rowName and propertyName must be strings");
    }
@@ -1013,7 +1004,6 @@ static duk_ret_t duk_rbus_create_data_model(duk_context *ctx)
       duk_error(ctx, DUK_ERR_TYPE_ERROR, "elements array cannot be empty");
    }
    rbusDataElement_t *elements = malloc(numElements * sizeof(rbusDataElement_t));
-   // data_element_info_t *elements = malloc(numElements * sizeof(data_element_info_t));
    for (duk_size_t i = 0; i < numElements; i++)
    {
       duk_get_prop_index(ctx, 0, i);
@@ -1080,7 +1070,6 @@ static duk_ret_t duk_rbus_create_data_model(duk_context *ctx)
 
 // Function registration array
 static const duk_function_list_entry rbus_functions[] = {
-    {"close", duk_rbus_close, 0},
     {"setValue", duk_rbus_set_value, 2},
     {"getValue", duk_rbus_get_value, 1},
     {"subscribeToEvent", duk_rbus_subscribe_to_event, 3},
@@ -1099,30 +1088,29 @@ static const duk_function_list_entry rbus_functions[] = {
     {"addTableRow", duk_rbus_add_table_row, 2},
     {"removeTableRow", duk_rbus_remove_table_row, 1},
     {"registerTableRow", duk_rbus_register_table_row, 3},
-    {"setTableProperty", duk_rbus_set_table_property, 3},
+    {"setTableProperty", duk_rbus_set_table_property, 2},
     {"createDataModel", duk_rbus_create_data_model, 1},
     {"discoverRegisteredComponents", duk_rbus_discover_registered_components, 0},
     {NULL, NULL, 0}};
 
 duk_idx_t register_function(duk_context *ctx)
 {
-
-#if 0
-   for (const duk_function_list_entry *f = rbus_functions; f->key != NULL; f++)
-   {
-      duk_push_c_function(ctx, f->value, f->nargs);
-      duk_put_global_string(ctx, f->key);
-   }
-#endif
-
    duk_push_string(ctx, "rbus");
    duk_push_object(ctx);
    duk_put_function_list(ctx, -1, rbus_functions);
    duk_put_global_string(ctx, "rbus");
 
-   // duk_put_prop(ctx, -3);
-
    duk_rbus_open(ctx, "littlesheens");
 
-   return 1;
+   return 0;
 }
+
+void close_function(duk_context *ctx)
+{
+   rbus_closeBrokerConnection();
+   if (rbus_handle)
+   {
+      rbus_close(rbus_handle);
+   }
+}
+
