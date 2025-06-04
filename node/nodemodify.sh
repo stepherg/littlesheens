@@ -20,20 +20,23 @@ TARGET=node-littlesheens
 mkdir -p $TARGET
 
 cat<<EOF > $TARGET/index.js
-function print(x) {
-    console.log(x);
+function print(...x) {
+    console.log(...x);
 }
 
 var safeEval = require('safe-eval');
 
 var sandbox = function(code) {
+    var context = {
+      print: function (...args) { console.log(...args); }
+    }
     return safeEval(code);
 }
 EOF
 
 for F in prof match sandbox step; do 
-   sed -e 's/print(/console.log(/g' ../js/$F.js >> $TARGET/index.js
-   #cat ../js/$F.js >> $TARGET/index.js
+#   sed -e 's/print(/console.log(/g' ../js/$F.js >> $TARGET/index.js
+   cat ../js/$F.js >> $TARGET/index.js
 done
 
 cat<<EOF >> $TARGET/index.js

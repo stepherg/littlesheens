@@ -8,7 +8,7 @@ function print() {
 
 var Cfg = {
    MaxSteps: 100,
-   debug: false
+   debug: true
 };
 
 var Stats = {
@@ -25,6 +25,11 @@ function GetSpec(filename) {
    return JSON.parse(fs.readFileSync(filename, 'utf8'));
 }
 
+
+
+//
+// CrewProcess
+//
 function CrewProcess(crew_js, message_js) {
     Stats.CrewProcess++;
 
@@ -44,8 +49,9 @@ function CrewProcess(crew_js, message_js) {
          if (typeof targets == 'string') {
             targets = [targets];
          }
-         print("CrewProcess routing", JSON.stringify(targets));
+         print("CrewProcess routing: ", JSON.stringify(targets));
       } else {
+         // RDL:  Could add a no unsolicited flag
          // The entire crew will see this message.
          targets = [];
          for (var mid in crew.machines) {
@@ -59,13 +65,18 @@ function CrewProcess(crew_js, message_js) {
          var mid = targets[i];
          var machine = crew.machines[mid];
          if (machine) {
+            // get the spec file
             var spec = GetSpec(machine.spec);
 
+            // stage the state from the crew
             var state = {
                node: machine.node,
                bs: machine.bs
             };
 
+            //
+            // WALK the spec
+            //
             steppeds[mid] = SHEENS.walk(Cfg, spec, state, message);
          } // Otherwise just move on.
       }
@@ -77,6 +88,9 @@ function CrewProcess(crew_js, message_js) {
    }
 }
 
+//
+// GetEmitted
+//
 function GetEmitted(steppeds_js) {
    try {
 
@@ -89,7 +103,7 @@ function GetEmitted(steppeds_js) {
             emitted.push(JSON.stringify(msgs[i]));
          }
          if (steppeds[mid].stoppedBecause == "limited") {
-            print("ERROR");
+            print("ERROR: Hit limit");
          }
       }
       return emitted;
@@ -101,6 +115,9 @@ function GetEmitted(steppeds_js) {
 
 // sandbox('JSON.stringify({"bs":{"x":1+2},"emitted":["test"]})');
 
+//
+// CrewUpdate
+//
 function CrewUpdate(crew_js, steppeds_js) {
    Stats.CrewUpdate++;
    try {
@@ -122,9 +139,15 @@ function CrewUpdate(crew_js, steppeds_js) {
 
 function process_input(crew, message) {
    var message = JSON.stringify(message);
+
+   // process
    var steppeds = CrewProcess(crew, message); 
    var result = {};
+
+   // get result
    result.emitted = GetEmitted(steppeds);
+
+   // update crew
    result.crew = CrewUpdate(crew, steppeds); 
    return result;
 }
@@ -133,12 +156,13 @@ function process_input(crew, message) {
 var crew = JSON.stringify({
    id:"simpsons",
    machines:{
-      doubler:{spec:"specs/double.js",node:"listen",bs:{count:0}},
-      turnstile:{spec:"specs/turnstile.js",node:"locked",bs:{}},
+//      doubler:{spec:"specs/double.js",node:"listen",bs:{count:0}},
+//      turnstile:{spec:"specs/turnstile.js",node:"locked",bs:{}},
       t2example:{spec:"specs/t2example.js",node:"start",bs:{}}
    }
 });
 
+/*
 result = process_input(crew, {to: ["doubler"], double:1});
 print(result.emitted);
 crew = result.crew;
@@ -154,6 +178,18 @@ crew = result.crew;
 result = process_input(crew, {double:100});
 //print(result.emitted);
 crew = result.crew;
+//print(crew);
+
+result = process_input(crew, {double:100});
+//print(result.emitted);
+crew = result.crew;
+//print(crew);
+*/
+
+result = process_input(crew, {timer:100});
+print(result.emitted);
+crew = result.crew;
+print(crew);
 
 /*
 
@@ -182,5 +218,3 @@ steppeds = CrewProcess(crew, message);
 print(GetEmitted(steppeds));
 crew = CrewUpdate(crew, steppeds); 
 */
-
-print(crew);

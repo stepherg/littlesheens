@@ -6,24 +6,34 @@ nodes:
     branching:
       branches:
         - target: generateNow
+
   generateNow:
     action:
       interpreter: ecmascript
       source: |-
-        _.out({"action":"generateReport()"});
+        _.log("******hey there******", 45);
+        _.out({"go":"way"});
         return _.bindings;
     branching:
       branches:
         - target: firstInterval
+          timer: 300
+
   firstInterval:
     action:
       interpreter: ecmascript
       source: |-
-        _.out({"action":"generateReport()"});
+        console.log("hey there");
+        _.out({timer: 2});
+        _.bindings.count++;
         return _.bindings;
     branching:
       branches:
-        - target: periodic
+        - pattern: |
+            {"timer":"?id"}
+          target: periodic
+          timer: 300
+
   periodic:
     action:
       interpreter: ecmascript
@@ -32,4 +42,24 @@ nodes:
         return _.bindings;
     branching:
       branches:
-        - target: periodic
+        - pattern: |
+            {"timer":"?id"}
+          guard:
+            interpreter: ecmascript
+            source: |-
+              var bs = _.bindings;
+              var f = parseFloat(bs["?id"]);
+              if (isNaN(f)) {
+                return "";
+              }
+              bs["?x"] = f;
+              return bs;
+          timer: 86400
+          target: periodic
+
+  stop:
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"action":"stop"});
+        return _.bindings;

@@ -30,9 +30,10 @@ function sandboxedAction(ctx, bs, src) {
 
    var code = "\n" +
       "var emitting = [];\n" + 
+      "var debug_logging = [];\n" + 
       "var env = {\n" + 
       "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
-      "  target: function(x) { console.log(x); },\n" + 
+      "  log: function(...args) { debug_logging.push(...args); },\n" + 
       "  out: function(x) { emitting.push(x); }\n" + 
       "}\n" + 
       "\n" + 
@@ -46,14 +47,18 @@ function sandboxedAction(ctx, bs, src) {
       code += "JSON.stringify({bs: bs, emitted: emitting});\n";
    } else {
       code = "function() {\n" + code + "\n" +
-         "return JSON.stringify({bs: bs, emitted: emitting});\n" +
+         "return JSON.stringify({bs: bs, debug_logging: debug_logging, emitted: emitting});\n" +
          "}();\n";
    }
 
    try {
       var result_js = sandbox(code);
       try {
-         return JSON.parse(result_js);
+         var result = JSON.parse(result_js);
+         for (var i = 0; i < result.debug_logging.length; i++) {
+            print(result.debug_logging[i]);
+         }
+         return result;
       } catch (e) {
          throw e + " on result parsing of '" + result_js + "'";
       }
