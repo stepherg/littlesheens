@@ -28,11 +28,13 @@ function sandboxedAction(ctx, bs, src) {
 
    var bs_js = JSON.stringify(bs);
 
+   //"  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },"
    var code = "\n" +
       "var emitting = [];\n" + 
       "var debug_logging = [];\n" + 
       "var env = {\n" + 
       "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
+      "  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },\n" + 
       "  log: function(...args) { debug_logging.push(...args); },\n" + 
       "  out: function(x) { emitting.push(x); }\n" + 
       "}\n" + 
@@ -56,7 +58,7 @@ function sandboxedAction(ctx, bs, src) {
       try {
          var result = JSON.parse(result_js);
          for (var i = 0; i < result.debug_logging.length; i++) {
-            print(result.debug_logging[i]);
+            print("**SANDBOX**: "+result.debug_logging[i]);
          }
          return result;
       } catch (e) {
