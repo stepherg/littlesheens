@@ -46,6 +46,9 @@ function step(ctx, spec, state, message) {
       for (var i = 0; i < actions.length; i++) {
          var action= actions[i];
          if (action) {
+            //
+            // interpreter
+            //
             if (action.interpreter) {
                if (interpreterAliases.indexOf(action.interpreter) < 0) {
                   throw {error: "bad interpreter", interpreter: action.interpreter};
@@ -58,6 +61,8 @@ function step(ctx, spec, state, message) {
             } else if(action.type == 'log') {
                // do some checks
                print(action.text);
+            } else if(action.type == 'RBUS') {
+               print("RBUS: "+action.method+ " " + action.paths);
             }
          }
       }

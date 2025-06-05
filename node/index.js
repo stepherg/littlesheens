@@ -5,7 +5,6 @@ function print() {
   console.log(...arguments);
 }
 
-
 var Cfg = {
    MaxSteps: 100,
    debug: false,

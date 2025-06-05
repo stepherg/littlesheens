@@ -8,13 +8,20 @@ nodes:
         - target: generateNow
 
   generateNow:
-    action:
-      interpreter: ecmascript
-      source: |-
-        var bs = _.bindings;
-        //_.log(bs['_id']);
-        _.out({"did":"generateNow"});
-        return _.bindings;
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          //_.log(bs['_id']);
+          var now = parseInt(Date.now()/1000)
+          _.out({"ts":now, "did":"generateNow"});
+          return _.bindings;
+      - type: RBUS
+        method: GET
+        paths: 
+          - a
+          - b
+          - c
     branching:
       branches:
         # set first interval timer
@@ -26,13 +33,20 @@ nodes:
               id: timer-firstInterval
 
   firstInterval:
-    action:
-      interpreter: ecmascript
-      source: |-
-        var bs = _.bindings;
-        //_.log(bs['_id']);
-        _.out({"did":"firstInterval"});
-        return _.bindings;
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          //_.log(bs['_id']);
+          var now = parseInt(Date.now()/1000)
+          _.out({"ts":now, "did":"firstInterval"});
+          return _.bindings;
+      - type: RBUS
+        method: GET
+        paths: 
+          - d
+          - e
+          - f
     branching:
       type: message
       branches:
@@ -54,13 +68,20 @@ nodes:
               id: timer-periodic
 
   periodic:
-    action:
-      interpreter: ecmascript
-      source: |-
-        var bs = _.bindings;
-        //_.log(bs['_id']);
-        _.out({"did":"periodic"});
-        return _.bindings;
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          //_.log(bs['_id']);
+          var now = parseInt(Date.now()/1000)
+          _.out({"ts":now, "did":"periodic"});
+          return _.bindings;
+      - type: RBUS
+        method: GET
+        paths: 
+          - h
+          - i
+          - j
     branching:
       type: message
       branches:
