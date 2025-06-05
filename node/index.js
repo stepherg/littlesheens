@@ -1,6 +1,8 @@
 var fs = require('fs');
 const SHEENS = require('littlesheens');
 
+SHEENS.times.enable();
+
 function print() {
   console.log(...arguments);
 }
@@ -192,4 +194,8 @@ setTimeout(function () {
    for (var i = 0; i < timers.length; i++) {
       clearInterval(timers[i]);
    }
+
+   print();
+   print();
+   print("Performance summary:  ",SHEENS.times.summary());
 }, 10000);
