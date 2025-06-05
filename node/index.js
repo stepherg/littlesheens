@@ -187,4 +187,9 @@ setTimeout(function () {
    var result= process_input(crew, {event: 'stop'});
    print(result.emitted);
    crew = result.crew;
+
+   timers = Cfg.timers
+   for (var i = 0; i < timers.length; i++) {
+      clearInterval(timers[i]);
+   }
 }, 10000);
