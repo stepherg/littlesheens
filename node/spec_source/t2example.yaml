@@ -17,8 +17,11 @@ nodes:
           var bs = _.bindings;
           var now = parseInt(Date.now()/1000)
           // register for RBUS events
+
+          // decide whether tigger based or periodic
           _.log("set up trigger conditions");
-          _.out({"ts":now, "did":"task"});
+
+          _.out({"ts":now, "did":"setup"});
           return _.bindings;
     branching:
       branches:
@@ -29,27 +32,35 @@ nodes:
       - interpreter: ecmascript
         source: |-
           var bs = _.bindings;
-          var now = parseInt(Date.now()/1000)
-          // get the RBUS stuff
+
           _.log("Running task");
+          // iterate over Paramaters in bs
+          var params =  bs.parameters;
+
+          for (var i = 0; i < params.length; i++) {
+            //_.log(params[i].reference);
+          }
+
+          // get the RBUS stuff
+          var now = parseInt(Date.now()/1000)
           _.out({"ts":now, "did":"task"});
           return _.bindings;
-      - type: RBUS
-        method: GET
-        paths: 
-          - a
-          - b
-          - c
+      #- type: RBUS
+      #  method: GET
+      #  paths: 
+      #    - Device.DeviceInfo.Uptime
+      #    - Device.DeviceInfo.SerialNumber
+      #    - Device.DeviceInfo.Manufacturer
+      #    - Device.DeviceInfo.ModelName
+
     branching:
       branches:
-        # set first interval timer
         - target: Idle
 
   scheduleFirstInterval:
     branching:
       branches:
         - target: 
-            dest: Idle
             # set timer event
             timer: 
               delay: 3000
@@ -59,10 +70,8 @@ nodes:
   schedulePeriodic:
     branching:
       branches:
-        # set first interval timer
+        # set periodic timer
         - target: 
-            dest: Idle
-            # set timer event
             timer: 
               delay: 5000
               #delay: 86400
@@ -82,6 +91,9 @@ nodes:
         - pattern: |
             {"event":"stop"}
           target: shutdown
+        - pattern: |
+            {"event":"trigger"}
+          target: Task
 
   shutdown:
     action:
