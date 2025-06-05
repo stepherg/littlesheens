@@ -2,16 +2,27 @@ name: t2example
 doc: none
 parsepatterns: true
 nodes:
-  scheduleFirstInterval:
+  stop:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"event":"start"}
+          target: startup
+
+  startup:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var now = parseInt(Date.now()/1000)
+          // register for RBUS events
+          _.log("set up trigger conditions");
+          _.out({"ts":now, "did":"task"});
+          return _.bindings;
     branching:
       branches:
-        - target: 
-            dest: Idle
-            # set timer event
-            timer: 
-              delay: 3000
-              id: timer-firstInterval
-        - target: Task
+        - target: scheduleFirstInterval
 
   Task:
     actions:
@@ -19,6 +30,8 @@ nodes:
         source: |-
           var bs = _.bindings;
           var now = parseInt(Date.now()/1000)
+          // get the RBUS stuff
+          _.log("Running task");
           _.out({"ts":now, "did":"task"});
           return _.bindings;
       - type: RBUS
@@ -31,6 +44,17 @@ nodes:
       branches:
         # set first interval timer
         - target: Idle
+
+  scheduleFirstInterval:
+    branching:
+      branches:
+        - target: 
+            dest: Idle
+            # set timer event
+            timer: 
+              delay: 3000
+              id: timer-firstInterval
+        - target: Task
 
   schedulePeriodic:
     branching:
@@ -71,10 +95,3 @@ nodes:
       branches:
         - target: stop
 
-  stop:
-    branching:
-      type: message
-      branches:
-        - pattern: |
-            {"event":"start"}
-          target: scheduleFirstInterval
