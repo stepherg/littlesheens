@@ -23,16 +23,18 @@ nodes:
           - b
           - c
     branching:
+      type: message
       branches:
         # set first interval timer
         - target: 
-            dest: firstInterval
+            dest: Idle
             # set timer event
             timer: 
               delay: 3000
               id: timer-firstInterval
 
-  firstInterval:
+
+  firstIntervalTask:
     actions:
       - interpreter: ecmascript
         source: |-
@@ -48,26 +50,22 @@ nodes:
           - e
           - f
     branching:
-      type: message
       branches:
-        # when the event comes in, transition
-        - pattern: |
-            {"event":"timer-firstInterval"}
-          target: schedulePeriodic
+        - target: schedulePeriodic
 
   schedulePeriodic:
     branching:
       branches:
         # set first interval timer
         - target: 
-            dest: periodic
+            dest: Idle
             # set timer event
             timer: 
               delay: 5000
               #delay: 86400
               id: timer-periodic
 
-  periodic:
+  periodicTask:
     actions:
       - interpreter: ecmascript
         source: |-
@@ -83,15 +81,19 @@ nodes:
           - i
           - j
     branching:
+      branches:
+        - target: schedulePeriodic
+
+  Idle:
+    branching:
       type: message
       branches:
-        # when the event comes in, transition
+        - pattern: |
+            {"event":"timer-firstInterval"}
+          target: firstIntervalTask
         - pattern: |
             {"event":"timer-periodic"}
-          target: schedulePeriodic
-        #- pattern: |
-        #    {"event":"stop"}
-        #  target: stop
+          target: periodicTask
 
   stop:
     action:
