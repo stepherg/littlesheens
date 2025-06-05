@@ -8,8 +8,8 @@ function print() {
 var Cfg = {
    MaxSteps: 100,
    debug: false,
+   timers: [],
    fire: function (id) { 
-      //console.log("got it: "+id); 
       var result= process_input(crew, {event: id});
       print(result.emitted);
       crew = result.crew;
@@ -162,7 +162,6 @@ function genRandomId(length) {
    return Math.random().toString(36).substring(2, length + 2); 
 }
 
-
 var id = "t2example-"+genRandomId(5);
 
 var crew = JSON.stringify({
@@ -170,68 +169,22 @@ var crew = JSON.stringify({
    machines:{
 //      doubler:{spec:"specs/double.js",node:"listen",bs:{count:0}},
 //      turnstile:{spec:"specs/turnstile.js",node:"locked",bs:{}},
-      t2example:{spec:"specs/t2example.js",node:"start",bs:{_id: id}}
+      t2example:{spec:"specs/t2example.js",node:"stop",bs:{_id: id}}
    }
 });
 
 /*
 result = process_input(crew, {to: ["doubler"], double:1});
-print(result.emitted);
-crew = result.crew;
-
-result = process_input(crew, {to: ["doubler"], double:10});
-print(result.emitted);
-crew = result.crew;
-
-result = process_input(crew, {to: ["doubler"], double:100});
-print(result.emitted);
-crew = result.crew;
-
-result = process_input(crew, {double:100});
-//print(result.emitted);
-crew = result.crew;
-//print(crew);
-
-result = process_input(crew, {double:100});
-//print(result.emitted);
-crew = result.crew;
-//print(crew);
 */
 
-result = process_input(crew, {});
+result = process_input(crew, {event: 'start'});
 print(result.emitted);
 crew = result.crew;
-
-/*
-
-message = JSON.stringify({double:100});
-steppeds = CrewProcess(crew, message); 
-print(GetEmitted(steppeds));
-crew = CrewUpdate(crew, steppeds); 
-
-message = JSON.stringify({input:"push"});
-steppeds = CrewProcess(crew, message); 
-print(GetEmitted(steppeds));
-crew = CrewUpdate(crew, steppeds); 
-
-message = JSON.stringify({input:"coin"});
-steppeds = CrewProcess(crew, message); 
-print(GetEmitted(steppeds));
-crew = CrewUpdate(crew, steppeds); 
-
-message = JSON.stringify({input:"coin"});
-steppeds = CrewProcess(crew, message); 
-print(GetEmitted(steppeds));
-crew = CrewUpdate(crew, steppeds); 
-
-message = JSON.stringify({input:"push"});
-steppeds = CrewProcess(crew, message); 
-print(GetEmitted(steppeds));
-crew = CrewUpdate(crew, steppeds); 
-*/
 
 // Clear all tasks after 15 seconds
 setTimeout(function () {
-   console.log('wrapping up');
-   exit();
-}, 30000);
+   console.log('shutting down crews');
+   var result= process_input(crew, {event: 'stop'});
+   print(result.emitted);
+   crew = result.crew;
+}, 10000);

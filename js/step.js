@@ -89,7 +89,7 @@ function step(ctx, spec, state, message) {
       for (var i = 0; i < branches.length; i++) {
          var branch = branches[i];
 
-         if (ctx.debug) print(branch);
+         if (ctx.debug) print("BRANCH:  ",branch);
 
          //
          // pattern
@@ -102,13 +102,14 @@ function step(ctx, spec, state, message) {
             //print(pattern, against, bs);
             var bss = match(ctx, pattern, against, bs);
             if (!bss || bss.length == 0) {
-               //print("NO MATCH");
+               if(ctx.debug) print("NO MATCH: ",against, pattern);
                continue;
             }
             if (1 < bss.length) {
                throw {error: "too many sets of bindings", bss: bss};
             }
             bs = bss[0];
+            if(ctx.debug) print("MATCHED: ", against, pattern);
          }
 
          //
@@ -133,9 +134,10 @@ function step(ctx, spec, state, message) {
          if (timer) {
             if (ctx.debug) print("SCHEDULING TIMER: ", bs['_id'], timer.delay);
             //  branch later
-            setTimeout(function () {
-               ctx.fire(timer.id);
-            }, timer.delay);
+            ctx.timers.push(setTimeout(ctx.fire, timer.delay, timer.id));
+
+            // schedule timer but allow other branches to process ...
+            continue;
          }
 
          if (typeof branch.target === 'object')

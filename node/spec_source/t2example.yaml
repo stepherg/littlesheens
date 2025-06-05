@@ -2,19 +2,24 @@ name: t2example
 doc: none
 parsepatterns: true
 nodes:
-  start:
+  scheduleFirstInterval:
     branching:
       branches:
-        - target: generateNow
+        - target: 
+            dest: Idle
+            # set timer event
+            timer: 
+              delay: 3000
+              id: timer-firstInterval
+        - target: Task
 
-  generateNow:
+  Task:
     actions:
       - interpreter: ecmascript
         source: |-
           var bs = _.bindings;
-          //_.log(bs['_id']);
           var now = parseInt(Date.now()/1000)
-          _.out({"ts":now, "did":"generateNow"});
+          _.out({"ts":now, "did":"task"});
           return _.bindings;
       - type: RBUS
         method: GET
@@ -23,35 +28,9 @@ nodes:
           - b
           - c
     branching:
-      type: message
       branches:
         # set first interval timer
-        - target: 
-            dest: Idle
-            # set timer event
-            timer: 
-              delay: 3000
-              id: timer-firstInterval
-
-
-  firstIntervalTask:
-    actions:
-      - interpreter: ecmascript
-        source: |-
-          var bs = _.bindings;
-          //_.log(bs['_id']);
-          var now = parseInt(Date.now()/1000)
-          _.out({"ts":now, "did":"firstInterval"});
-          return _.bindings;
-      - type: RBUS
-        method: GET
-        paths: 
-          - d
-          - e
-          - f
-    branching:
-      branches:
-        - target: schedulePeriodic
+        - target: Idle
 
   schedulePeriodic:
     branching:
@@ -64,25 +43,7 @@ nodes:
               delay: 5000
               #delay: 86400
               id: timer-periodic
-
-  periodicTask:
-    actions:
-      - interpreter: ecmascript
-        source: |-
-          var bs = _.bindings;
-          //_.log(bs['_id']);
-          var now = parseInt(Date.now()/1000)
-          _.out({"ts":now, "did":"periodic"});
-          return _.bindings;
-      - type: RBUS
-        method: GET
-        paths: 
-          - h
-          - i
-          - j
-    branching:
-      branches:
-        - target: schedulePeriodic
+        - target: Task
 
   Idle:
     branching:
@@ -90,14 +51,30 @@ nodes:
       branches:
         - pattern: |
             {"event":"timer-firstInterval"}
-          target: firstIntervalTask
+          target: schedulePeriodic
         - pattern: |
             {"event":"timer-periodic"}
-          target: periodicTask
+          target: schedulePeriodic
+        - pattern: |
+            {"event":"stop"}
+          target: shutdown
 
-  stop:
+  shutdown:
     action:
       interpreter: ecmascript
       source: |-
-        _.out({"action":"stopped"});
+        var bs = _.bindings;
+        var now = parseInt(Date.now()/1000)
+        _.out({"ts":now, "did":"stopping"});
         return _.bindings;
+    branching:
+      branches:
+        - target: stop
+
+  stop:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"event":"start"}
+          target: scheduleFirstInterval
