@@ -25,8 +25,21 @@ nodes:
           return _.bindings;
     branching:
       branches:
+        - target: initial
+
+  initial:
+    timer:
+      delay: timers.generateNow
+      id: trigger
+    branching:
+      branches:
         - target: scheduleFirstInterval
-          test: timers.generateNow
+          test: timers.firstInterval
+
+        - target: onlySchedulePeriodic
+          test: timers.periodicInterval
+
+        # default go to Idle waiting on events
         - target: Idle
 
   Task:
@@ -66,8 +79,19 @@ nodes:
       id: timer-firstInterval
     branching:
       branches:
-        - target: Task
+        - target: Idle
+       
+  # Schedule the periodic 
+  onlySchedulePeriodic:
+    # set periodic timer
+    timer: 
+      delay: timers.periodicInterval
+      id: timer-periodic
+    branching:
+      branches:
+        - target: Idle
 
+  # Schedule the periodic and perform Task
   schedulePeriodic:
     # set periodic timer
     timer: 
