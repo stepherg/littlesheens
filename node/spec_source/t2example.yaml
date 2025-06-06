@@ -60,23 +60,21 @@ nodes:
         - target: Idle
 
   scheduleFirstInterval:
+    # set first timer event
+    timer: 
+      delay: timers.firstInterval
+      id: timer-firstInterval
     branching:
       branches:
-        - target: 
-            # set timer event
-            timer: 
-              delay: timers.firstInterval
-              id: timer-firstInterval
         - target: Task
 
   schedulePeriodic:
+    # set periodic timer
+    timer: 
+      delay: timers.periodicInterval
+      id: timer-periodic
     branching:
       branches:
-        # set periodic timer
-        - target: 
-            timer: 
-              delay: timers.periodicInterval
-              id: timer-periodic
         - target: Task
 
   Idle:

@@ -67,6 +67,28 @@ function step(ctx, spec, state, message) {
          }
       }
 
+      //
+      // Timers
+      //
+      var timers= node.timers;
+      if (!timers) {
+         timers= [node.timer];
+      }
+
+      for (var i = 0; i < timers.length; i++) {
+         var timer = timers[i];
+         if (timer) {
+            if (ctx.debug) print("SCHEDULING TIMER: ", bs['_id'], timer.delay);
+
+            // safely evalute the field
+            var delay = sandboxedStatement(ctx, bs, timer.delay);
+
+            // only set timer if delay is given
+            if (delay) {
+               ctx.timers.push(setTimeout(ctx.fire, delay, timer.id));
+            }
+         }
+      }
 
       //
       // Branching
@@ -137,24 +159,6 @@ function step(ctx, spec, state, message) {
             }
          }
          
-         //
-         // timer
-         //
-         var timer= branch.target.timer;
-         if (timer) {
-            if (ctx.debug) print("SCHEDULING TIMER: ", bs['_id'], timer.delay);
-
-            // safely evalute the field
-            var delay = sandboxedStatement(ctx, bs, timer.delay);
-
-            // only set timer if delay is given
-            if (delay) {
-               ctx.timers.push(setTimeout(ctx.fire, delay, timer.id));
-            }
-
-            // schedule timer but allow other branches to process ...
-            continue;
-         }
 
          if (typeof branch.target === 'object')
             return {to: {node: branch.target.dest, bs: bs}, consumed: consuming, emitted: emitted};
