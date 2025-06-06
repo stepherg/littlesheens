@@ -111,7 +111,7 @@ function step(ctx, spec, state, message) {
       for (var i = 0; i < branches.length; i++) {
          var branch = branches[i];
 
-         if (ctx.debug) print("BRANCH:  ",branch);
+         if (ctx.debug) print("TEST BRANCH:  ",branch);
 
          //
          // pattern
@@ -146,7 +146,6 @@ function step(ctx, spec, state, message) {
                continue;
             }
             bs = evaled.bs;
-            // Check that we didn't emit any messages ...
          }
          
          //
@@ -157,6 +156,7 @@ function step(ctx, spec, state, message) {
             if (!evaled) {
                continue;
             }
+            if(ctx.debug) print("TEST MATCHED: ", branch.test, evaled);
          }
          
 
