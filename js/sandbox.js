@@ -80,3 +80,14 @@ function sandboxedAction(ctx, bs, src) {
    }
 }
 
+function sandboxedStatement(ctx, bs, src) {
+   Times.tick("sandboxStatement");
+   try {
+      // may need to use the safeeval
+      return safeEval(src, bs);
+   } catch (e) {
+      print("sandbox statement error", e);
+   } finally {
+      Times.tock("sandboxStatement");
+   }
+}

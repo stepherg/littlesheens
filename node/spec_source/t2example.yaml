@@ -26,6 +26,8 @@ nodes:
     branching:
       branches:
         - target: scheduleFirstInterval
+          test: timers.generateNow
+        - target: Idle
 
   Task:
     actions:
@@ -63,7 +65,7 @@ nodes:
         - target: 
             # set timer event
             timer: 
-              delay: 3000
+              delay: timers.firstInterval
               id: timer-firstInterval
         - target: Task
 
@@ -73,8 +75,7 @@ nodes:
         # set periodic timer
         - target: 
             timer: 
-              delay: 5000
-              #delay: 86400
+              delay: timers.periodicInterval
               id: timer-periodic
         - target: Task
 

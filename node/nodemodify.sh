@@ -27,11 +27,9 @@ function print(...x) {
 var safeEval = require('safe-eval');
 
 var sandbox = function(code) {
-    var context = {
-      print: function (...args) { console.log(...args); }
-    }
     return safeEval(code);
 }
+
 EOF
 
 for F in prof match sandbox step; do 

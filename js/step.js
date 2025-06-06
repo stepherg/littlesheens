@@ -128,13 +128,29 @@ function step(ctx, spec, state, message) {
          }
          
          //
+         // Branching test
+         //
+         if (branch.test) {
+            var evaled = sandboxedStatement(ctx, bs, branch.test);
+            if (!evaled) {
+               continue;
+            }
+         }
+         
+         //
          // timer
          //
          var timer= branch.target.timer;
          if (timer) {
             if (ctx.debug) print("SCHEDULING TIMER: ", bs['_id'], timer.delay);
-            //  branch later
-            ctx.timers.push(setTimeout(ctx.fire, timer.delay, timer.id));
+
+            // safely evalute the field
+            var delay = sandboxedStatement(ctx, bs, timer.delay);
+
+            // only set timer if delay is given
+            if (delay) {
+               ctx.timers.push(setTimeout(ctx.fire, delay, timer.id));
+            }
 
             // schedule timer but allow other branches to process ...
             continue;
