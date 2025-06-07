@@ -27,6 +27,7 @@ function sandboxedAction(ctx, bs, src) {
    }
 
    var bs_js = JSON.stringify(bs);
+   
 
    //"  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },"
    var code = "\n" +
@@ -34,8 +35,22 @@ function sandboxedAction(ctx, bs, src) {
       "var debug_logging = [];\n" + 
       "var env = {\n" + 
       "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
-      "  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },\n" + 
+      "  generateRandomInt: function(min,max) {\n" +
+      "      min = Math.ceil(min);\n" + 
+      "      max = Math.floor(max);\n" +
+      "      return Math.floor(Math.random() * (max - min + 1)) + min;\n" +
+      "  },\n" +
+      "  generateRandomString: function(length) {\n" +
+      "     var result = '';\n" +
+      "     var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';\n" +
+      "     var charactersLength = characters.length;\n" +
+      "     for (var i = 0; i < length; i++) {\n" +
+      "        result += characters.charAt(Math.floor(Math.random() * charactersLength));\n" +
+      "     }\n" +
+      "     return result;\n" +
+      "     },\n" +
       "  log: function(...args) { debug_logging.push(...args); },\n" + 
+      "  rbus_getValue: function(path) { return env.generateRandomString(10); },\n" + 
       "  out: function(x) { emitting.push(x); }\n" + 
       "}\n" + 
       "\n" + 

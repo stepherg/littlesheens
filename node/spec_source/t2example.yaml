@@ -54,13 +54,18 @@ nodes:
           // iterate over Paramaters in bs
           var params =  bs.parameters;
 
+          var results = {};
+
           for (var i = 0; i < params.length; i++) {
-            //_.log(params[i].reference);
+            if (params[i].name)
+              results[params[i].name] = _.rbus_getValue(params[i].reference);
+            else
+              results[params[i].reference] = _.rbus_getValue(params[i].reference);
           }
 
           // get the RBUS stuff
           var now = parseInt(Date.now()/1000)
-          _.out({"ts":now, "id": id, "did":"task"});
+          _.out({"ts":now, "id": id, "did":"task", "results":results});
           return _.bindings;
       #- type: RBUS
       #  method: GET
