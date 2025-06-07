@@ -61,6 +61,7 @@ function CrewProcess(crew_js, message_js) {
          }
          print("CrewProcess routing: ", JSON.stringify(targets));
       } else {
+         print("CrewProcess routing to all");
          // RDL:  Could add a no unsolicited flag
          // The entire crew will see this message.
          targets = [];
@@ -189,21 +190,18 @@ var id = genRandomId(5);
 crew.machines[id] = {spec:"specs/t2example.js",node:"stop", bs:{_id: id, timers: Object.assign({}, timers), parameters:parameters['Parameters']}};
 
 timers.generateNow = false;
+timers.periodicInterval= 10000;
 id = genRandomId(5);
 crew.machines[id] = {spec:"specs/t2example.js",node:"stop", bs:{_id: id, timers: Object.assign({}, timers), parameters:parameters['Parameters']}};
 
 var crew_js = JSON.stringify(crew);
 print(crew_js);
 
-/*
-result = process_input(crew, {to: ["doubler"], double:1});
-*/
-
 result = process_input(crew_js, {event: 'start'});
 print(result.emitted);
 crew_js = result.crew;
 
-// Clear all tasks after 15 seconds
+// Clear all tasks after 60seconds
 setTimeout(function () {
    console.log('shutting down crews');
    var result= process_input(crew_js, {event: 'stop'});
@@ -218,4 +216,4 @@ setTimeout(function () {
    print();
    print();
    print("Performance summary:  ",SHEENS.times.summary());
-}, 10000);
+}, 60000);
