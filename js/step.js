@@ -85,7 +85,7 @@ function step(ctx, spec, state, message) {
 
             // only set timer if delay is given
             if (delay) {
-               ctx.timers.push(setTimeout(ctx.fire, delay, timer.id));
+               ctx.timers.push(setTimeout(ctx.fire, delay, timer.id, [bs._id]));
             }
          }
       }

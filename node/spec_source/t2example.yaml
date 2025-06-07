@@ -16,12 +16,13 @@ nodes:
         source: |-
           var bs = _.bindings;
           var now = parseInt(Date.now()/1000)
+          var id = bs._id;
           // register for RBUS events
 
           // decide whether tigger based or periodic
           _.log("set up trigger conditions");
 
-          _.out({"ts":now, "did":"setup"});
+          _.out({"ts":now, "id": id, "did":"setup"});
           return _.bindings;
     branching:
       branches:
@@ -29,7 +30,7 @@ nodes:
 
   initial:
     timer:
-      delay: timers.generateNow
+      delay: timers.generateNow 
       id: trigger
     branching:
       branches:
@@ -47,6 +48,7 @@ nodes:
       - interpreter: ecmascript
         source: |-
           var bs = _.bindings;
+          var id = bs._id;
 
           _.log("Running task");
           // iterate over Paramaters in bs
@@ -58,7 +60,7 @@ nodes:
 
           // get the RBUS stuff
           var now = parseInt(Date.now()/1000)
-          _.out({"ts":now, "did":"task"});
+          _.out({"ts":now, "id": id, "did":"task"});
           return _.bindings;
       #- type: RBUS
       #  method: GET
@@ -123,8 +125,9 @@ nodes:
       interpreter: ecmascript
       source: |-
         var bs = _.bindings;
+        var id = bs._id;
         var now = parseInt(Date.now()/1000)
-        _.out({"ts":now, "did":"stopping"});
+        _.out({"ts":now, "id": id, "did":"stopping"});
         return _.bindings;
     branching:
       branches:

@@ -51,6 +51,12 @@ if (!String.prototype.padStart) {
    };
 }
 
+if (!String.prototype.replaceAll) {
+   String.prototype.replaceAll = function(search, replacement) {
+   return this.split(search).join(replacement);
+   };
+}
+
 findConsecutiveRepeated = function(arr) {
   const result = [];
   var currentSequence = [];
