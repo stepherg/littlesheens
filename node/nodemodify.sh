@@ -26,8 +26,9 @@ function print(...x) {
 
 var safeEval = require('safe-eval');
 
-var sandbox = function(code) {
-    return safeEval(code);
+var sandbox = function(code, ctx) {
+    if (ctx == null) ctx = {};
+    return safeEval(code, ctx);
 }
 
 EOF

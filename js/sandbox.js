@@ -27,7 +27,6 @@ function sandboxedAction(ctx, bs, src) {
    }
 
    var bs_js = JSON.stringify(bs);
-   
 
    var code = "\n" +
       "var emitting = [];\n" + 
@@ -57,12 +56,12 @@ function sandboxedAction(ctx, bs, src) {
       "var bs = (function(_) {\n" + src + "\n})(env);\n";
 
    // The following conditional checks for 'safeEval', might have
-   // been defined by https://www.npmjs.com/package/safe-eval.  That
-   // 'safeEval' wants an expression, while the Duktape-based sandbox
-   // just takes a block.
+   // been defined by https://www.npmjs.com/package/safe-eval.  
    if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
+      //  Duktape-based sandbox just takes a code block.
       code += "JSON.stringify({bs: bs, emitted: emitting});\n";
    } else {
+      // 'safeEval' wants an expression.  Build a called function
       code = "function() {\n" + code + "\n" +
          "return JSON.stringify({bs: bs, debug_logging: debug_logging, emitted: emitting});\n" +
          "}();\n";
@@ -97,9 +96,19 @@ function sandboxedAction(ctx, bs, src) {
 
 function sandboxedStatement(ctx, bs, src) {
    Times.tick("sandboxStatement");
+
    try {
-      // may need to use the safeeval
-      return safeEval(src, bs);
+      if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
+         // DUKTAPE
+         var code_block = "var result= (function(_) {\n" + src + "\n})("+bs_js+");\n";
+         code_block += "JSON.stringify(result);\n";
+         var result_js = sandbox(code_block);
+         return JSON.parse(result_js);
+      } else {
+         // NODE SAFEEVAL
+         return sandbox(src, bs);
+      }
+
    } catch (e) {
       print("sandbox statement error", e);
    } finally {
