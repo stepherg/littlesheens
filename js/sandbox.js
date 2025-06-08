@@ -29,12 +29,12 @@ function sandboxedAction(ctx, bs, src) {
    var bs_js = JSON.stringify(bs);
    
 
-   //"  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },"
    var code = "\n" +
       "var emitting = [];\n" + 
       "var debug_logging = [];\n" + 
       "var env = {\n" + 
       "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
+      "  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },\n" + 
       "  generateRandomInt: function(min,max) {\n" +
       "      min = Math.ceil(min);\n" + 
       "      max = Math.floor(max);\n" +
