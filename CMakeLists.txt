@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(littlesheens C)
 
+set(PLUGIN_FOLDER "sheens-plugin")
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED YES)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-unused-value -fno-asynchronous-unwind-tables -ffunction-sections -I ${CMAKE_SOURCE_DIR} -fPIC")
@@ -8,6 +9,8 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -ldl")
 add_definitions(-D_POSIX_C_SOURCE=200809L)
 add_definitions(-D_XOPEN_SOURCE=500)
 add_definitions(-D__USE_GNU)
+add_definitions(-DPLUGIN_FOLDER="${PLUGIN_FOLDER}")
+add_definitions(-DPLUGIN_SEARCH_PATHS=".,../,/usr/lib")
 
 if (APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOSX -Wno-unused-but-set-variable")
@@ -45,14 +48,23 @@ find_path(RBUS_INCLUDE_DIR NAMES rbus.h HINTS "/usr/include/rbus")
 find_path(RTMSG_INCLUDE_DIR NAMES rtMessage.h HINTS "/usr/include/rtmessage")
 
 
+find_library(JANSSON_LIBRARY NAMES jansson)
+if(NOT JANSSON_LIBRARY)
+    message(FATAL_ERROR "jansson library not found")
+endif()
+
+
+
 # Duktape configuration
 set(DUKVERSION "duktape-2.7.0")
 set(DUK_SRC "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src")
 set(DUK_EXTRAS "${CMAKE_SOURCE_DIR}/${DUKVERSION}/extras")
 
+set(SHEENS_SRC "${CMAKE_SOURCE_DIR}/src")
+
 # Directories
 set(LIB_DIR "${CMAKE_SOURCE_DIR}/lib")
-set(OUT_DIR "${CMAKE_BINARY_DIR}/lib")
+set(OUT_DIR "${CMAKE_BINARY_DIR}/${PLUGIN_FOLDER}")
 set(JS_DIR "${CMAKE_SOURCE_DIR}/js")
 set(SPEC_DIR "${CMAKE_SOURCE_DIR}/specs")
 
@@ -68,28 +80,33 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${DUKVERSION}")
     execute_process(COMMAND tar xf "${CMAKE_BINARY_DIR}/${DUKVERSION}.tar.xz" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
+file(GLOB DUK_FILES "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src-separate/*.c")
+
 # libduktape shared library
 add_library(duktape SHARED 
-    ${DUK_SRC}/duktape.c
+    ${DUK_SRC}/duktape.c 
+    # ${DUK_FILES}
     ${DUK_EXTRAS}/print-alert/duk_print_alert.c
     ${DUK_EXTRAS}/module-duktape/duk_module_duktape.c
     ${DUK_EXTRAS}/module-node/duk_module_node.c
-    ${DUK_EXTRAS}/console/duk_console.c
+    # ${DUK_EXTRAS}/console/duk_console.c
 )
 target_include_directories(duktape PRIVATE ${DUK_SRC} ${DUK_EXTRAS})
 target_link_libraries(duktape PRIVATE m)
 
 # libmachines shared library
-add_library(machines SHARED 
-    machines.c 
-    machines_js.c
+add_library(machines SHARED
+   ${SHEENS_SRC}/machines.c 
+   ${SHEENS_SRC}/duk_console.c 
+   machines_js.c
 )
+
 target_include_directories(machines PRIVATE ${DUK_SRC} ${DUK_EXTRAS}/print-alert ${DUK_EXTRAS}/module-duktape ${DUK_EXTRAS}/module-node ${DUK_EXTRAS}/console)
 target_link_libraries(machines PRIVATE duktape)
 
 file(GLOB JS_FILES "${JS_DIR}/*.js")
 file(GLOB LIB_JS_FILES "${LIB_DIR}/*.js")
-set(JSFILES "${JS_FILES}" "${LIB_JS_FILES}" "${CMAKE_SOURCE_DIR}/driver.js")
+set(JSFILES "${JS_FILES}" "${LIB_JS_FILES}")
 
 file(COPY "${CMAKE_SOURCE_DIR}/telemetry/" DESTINATION ${CMAKE_BINARY_DIR})
 
@@ -104,9 +121,9 @@ add_custom_command(
     OUTPUT machines_js.c
     COMMAND minify machines.js > machines.js.terminated
     COMMAND truncate -s +1 machines.js.terminated
-    COMMAND ${CMAKE_SOURCE_DIR}/embedstr.sh mach_machines_js machines.js.terminated machines_js.c
+    COMMAND ${SHEENS_SRC}/embedstr.sh mach_machines_js machines.js.terminated machines_js.c
     COMMAND rm machines.js.terminated
-    DEPENDS machines.js ${CMAKE_SOURCE_DIR}/embedstr.sh
+    DEPENDS machines.js ${SHEENS_SRC}/embedstr.sh
 )
 
 # Convert YAML specs to JS
@@ -129,15 +146,15 @@ endforeach()
 add_custom_target(ConvertYamlToJson ALL DEPENDS ${JS_FILES})
 
 # Executables
-add_executable(demo demo.c util.c)
+add_executable(demo ${SHEENS_SRC}/demo.c ${SHEENS_SRC}/util.c)
 target_include_directories(demo PRIVATE ${DUK_SRC})
 target_link_libraries(demo PRIVATE machines duktape)
 
-add_executable(sheensio sheensio.c)
+add_executable(sheensio ${SHEENS_SRC}/sheensio.c)
 target_include_directories(sheensio PRIVATE ${DUK_SRC})
 target_link_libraries(sheensio PRIVATE machines duktape)
 
-add_executable(driver driver.c util.c)
+add_executable(driver ${SHEENS_SRC}/driver.c ${SHEENS_SRC}/util.c)
 target_include_directories(driver PRIVATE ${DUK_SRC})
 target_link_libraries(driver PRIVATE machines duktape)
 
@@ -152,16 +169,19 @@ if (NOT RBUS_LIBRARY OR NOT RBUS_INCLUDE_DIR OR NOT RTMSG_INCLUDE_DIR)
     set(RBUS_LIBRARY rbus)
 endif()
 
+#add_executable(rbus_tr181 rbus_tr181.c)
+#target_include_directories(rbus_tr181 PRIVATE ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
+#target_link_libraries(rbus_tr181 PRIVATE ${RBUS_LIBRARY} ${JANSSON_LIBRARY})
+
 # Dynamic libraries from lib directory
 file(GLOB LIB_SRCS "${LIB_DIR}/*.c")
 foreach(src ${LIB_SRCS})
     get_filename_component(filename ${src} NAME_WE)
     add_library(${filename} SHARED ${src})
-    target_include_directories(${filename} PRIVATE ${DUK_SRC} ${YAML_INCLUDE_DIR} ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
-    target_link_libraries(${filename} PRIVATE duktape curl ${YAML_LIBRARY} ${RBUS_LIBRARY})
+    target_include_directories(${filename} PRIVATE ${SHEENS_SRC} ${DUK_SRC} ${YAML_INCLUDE_DIR} ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
+    target_link_libraries(${filename} PRIVATE duktape curl ${YAML_LIBRARY} ${RBUS_LIBRARY} ${JANSSON_LIBRARY})
     set_target_properties(${filename} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
 endforeach()
-
 
 # Main target
 add_custom_target(build_all ALL DEPENDS 

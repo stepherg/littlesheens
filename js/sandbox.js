@@ -29,13 +29,13 @@ function sandboxedAction(ctx, bs, src) {
    var bs_js = JSON.stringify(bs);
 
    var code = "\n" +
-      "var emitting = [];\n" + 
-      "var debug_logging = [];\n" + 
-      "var env = {\n" + 
+      "var emitting = [];\n" +
+      "var debug_logging = [];\n" +
+      "var env = {\n" +
       "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
-      "  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },\n" + 
+      "  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },\n" +
       "  generateRandomInt: function(min,max) {\n" +
-      "      min = Math.ceil(min);\n" + 
+      "      min = Math.ceil(min);\n" +
       "      max = Math.floor(max);\n" +
       "      return Math.floor(Math.random() * (max - min + 1)) + min;\n" +
       "  },\n" +
@@ -48,18 +48,18 @@ function sandboxedAction(ctx, bs, src) {
       "     }\n" +
       "     return result;\n" +
       "     },\n" +
-      "  log: function(...args) { debug_logging.push(...args); },\n" + 
-      "  rbus_getValue: function(path) { return env.generateRandomString(10); },\n" + 
-      "  out: function(x) { emitting.push(x); }\n" + 
-      "}\n" + 
-      "\n" + 
+      "  log: function () {var args = Array.prototype.slice.call(arguments); debug_logging.push.apply(debug_logging, args);},\n" +
+      "  rbus_getValue: function(path) { return env.generateRandomString(10); },\n" +
+      "  out: function(x) { emitting.push(x); }\n" +
+      "}\n" +
+      "\n" +
       "var bs = (function(_) {\n" + src + "\n})(env);\n";
 
    // The following conditional checks for 'safeEval', might have
    // been defined by https://www.npmjs.com/package/safe-eval.  
    if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
       //  Duktape-based sandbox just takes a code block.
-      code += "JSON.stringify({bs: bs, emitted: emitting});\n";
+      code += "JSON.stringify({bs: bs, debug_logging: debug_logging, emitted: emitting});\n";
    } else {
       // 'safeEval' wants an expression.  Build a called function
       code = "function() {\n" + code + "\n" +
@@ -72,7 +72,7 @@ function sandboxedAction(ctx, bs, src) {
       try {
          var result = JSON.parse(result_js);
          for (var i = 0; i < result.debug_logging.length; i++) {
-            print("**SANDBOX**: "+result.debug_logging[i]);
+            print("**SANDBOX**: " + result.debug_logging[i]);
          }
          return result;
       } catch (e) {
@@ -100,7 +100,8 @@ function sandboxedStatement(ctx, bs, src) {
    try {
       if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
          // DUKTAPE
-         var code_block = "var result= (function(_) {\n" + src + "\n})("+bs_js+");\n";
+         var bs_js = JSON.stringify(bs);
+         var code_block = "var result= (function(_) {\nreturn _." + src + "\n})(" + bs_js + ");\n";
          code_block += "JSON.stringify(result);\n";
          var result_js = sandbox(code_block);
          return JSON.parse(result_js);

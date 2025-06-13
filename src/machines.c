@@ -23,6 +23,10 @@
 #include <stdlib.h>
 #include <dirent.h>
 #include <dlfcn.h>
+#include <sys/stat.h>
+#include <ftw.h>
+#include <unistd.h>
+#include <limits.h>
 
 #include "duktape.h"
 #include "duk_module_duktape.h"
@@ -45,6 +49,14 @@ typedef struct {
    void *provider_ctx;
 } Ctx;
 
+// These should be defined in CMakeLists.txt
+#ifndef PLUGIN_FOLDER
+#define PLUGIN_FOLDER "sheens-plugin"
+#endif
+#ifndef PLUGIN_SEARCH_PATHS
+#define PLUGIN_SEARCH_PATHS ".,/usr/lib"
+#endif
+
 #define MAX_REG_HANDLES 50
 static tFunctionHandle func_handles[MAX_REG_HANDLES];
 
@@ -53,13 +65,10 @@ static Ctx *ctx = NULL;
 
 static int register_c_funcs(Ctx *ctx);
 
-static tFunctionHandle *alloc_handle(void)
-{
+static tFunctionHandle *alloc_handle(void) {
    int idx = 0;
-   for (idx = 0; idx < MAX_REG_HANDLES; idx++)
-   {
-      if (!func_handles[idx].inUse)
-      {
+   for (idx = 0; idx < MAX_REG_HANDLES; idx++) {
+      if (!func_handles[idx].inUse) {
          func_handles[idx].inUse = 1;
          return &func_handles[idx];
       }
@@ -67,25 +76,19 @@ static tFunctionHandle *alloc_handle(void)
    return NULL;
 }
 
-static void free_handle(tFunctionHandle *handle)
-{
-   if (handle->lib_handle)
-   {
+static void free_handle(tFunctionHandle *handle) {
+   if (handle->lib_handle) {
       dlclose(handle->lib_handle);
    }
 
    memset(handle, 0, sizeof(tFunctionHandle));
 }
 
-static void close_handles(duk_context *ctx)
-{
+static void close_handles(duk_context *ctx) {
    int idx = 0;
-   for (idx = 0; idx < MAX_REG_HANDLES; idx++)
-   {
-      if (func_handles[idx].inUse)
-      {
-         if (func_handles[idx].close_func)
-         {
+   for (idx = 0; idx < MAX_REG_HANDLES; idx++) {
+      if (func_handles[idx].inUse) {
+         if (func_handles[idx].close_func) {
             func_handles[idx].close_func(ctx);
          }
          free_handle(&func_handles[idx]);
@@ -93,19 +96,16 @@ static void close_handles(duk_context *ctx)
    }
 }
 
-static char *read_file_as_string(const char *filename)
-{
+static char *read_file_as_string(const char *filename) {
    FILE *f = fopen(filename, "rb");
-   if (!f)
-   {
+   if (!f) {
       return NULL;
    }
    fseek(f, 0, SEEK_END);
    long len = ftell(f);
    fseek(f, 0, SEEK_SET);
    char *src = (char *)malloc(len + 1);
-   if (!src)
-   {
+   if (!src) {
       fclose(f);
       return NULL;
    }
@@ -116,8 +116,7 @@ static char *read_file_as_string(const char *filename)
 }
 
 // Duktape modSearch function
-static duk_ret_t mod_search(duk_context *ctx)
-{
+static duk_ret_t mod_search(duk_context *ctx) {
    // Get module ID from stack (index 0)
    const char *id = duk_require_string(ctx, 0);
 
@@ -127,8 +126,7 @@ static duk_ret_t mod_search(duk_context *ctx)
 
    // Read the file
    char *src = read_file_as_string(filename);
-   if (!src)
-   {
+   if (!src) {
       duk_push_sprintf(ctx, "cannot find module: %s", id);
       duk_throw(ctx); // Throw error if module not found
    }
@@ -140,8 +138,7 @@ static duk_ret_t mod_search(duk_context *ctx)
 }
 
 // Register modSearch function to Duktape.modSearch
-static void mod_search_register(duk_context *ctx)
-{
+static void mod_search_register(duk_context *ctx) {
    duk_push_global_object(ctx);
    duk_get_prop_string(ctx, -1, "Duktape");
    duk_push_c_function(ctx, mod_search, 4);
@@ -335,8 +332,7 @@ int mach_open() {
 /* API: mach_close, which is an exposed library function, releases the
    ECMAScript heap. */
 void mach_close() {
-   if (ctx && ctx->dctx)
-   {
+   if (ctx && ctx->dctx) {
       close_handles(ctx->dctx);
       duk_destroy_heap(ctx->dctx);
       ctx->dctx = NULL;
@@ -598,8 +594,7 @@ static void load_and_register_functions(Ctx *ctx, const char *path) {
    }
 
    handle->lib_handle = dlopen(path, RTLD_LAZY);
-   if (!handle->lib_handle)
-   {
+   if (!handle->lib_handle) {
       printf("Failed to load %s: %s\n", path, dlerror());
       return;
    }
@@ -617,8 +612,7 @@ static void load_and_register_functions(Ctx *ctx, const char *path) {
    // Set the close function, but we won't check for errors since all modules won't implement this
    handle->close_func = dlsym(handle->lib_handle, "close_function");
 
-   if (handle->register_func)
-   {
+   if (handle->register_func) {
       handle->register_func(ctx->dctx);
    }
 }
@@ -641,9 +635,79 @@ static void register_dynamic_functions(Ctx *ctx, const char *dir_path) {
    closedir(dir);
 }
 
+static char *search_directory(const char *base_path, const char *target) {
+   DIR *dir = opendir(base_path);
+   if (!dir) {
+      return NULL;
+   }
+
+   struct dirent *entry;
+   char path[PATH_MAX];
+   struct stat statbuf;
+   char *result = NULL;
+
+   while ((entry = readdir(dir)) != NULL && !result) {
+      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+         continue;
+      }
+
+      snprintf(path, sizeof(path), "%s/%s", base_path, entry->d_name);
+
+      if (stat(path, &statbuf) == -1) {
+         continue;
+      }
+
+      if (S_ISDIR(statbuf.st_mode)) {
+         if (strcmp(entry->d_name, target) == 0) {
+            char abs_path[PATH_MAX];
+            if (realpath(path, abs_path)) {
+               result = strdup(abs_path);
+            }
+         } else {
+            result = search_directory(path, target);
+         }
+      }
+   }
+
+   closedir(dir);
+   return result;
+}
+
 static int register_c_funcs(Ctx *ctx) {
-   // Register functions from the ./lib directory
-   register_dynamic_functions(ctx, "./lib");
+   // Register functions from the plugin directory
+   char *plugin_path = NULL;
+
+   // Create a copy of PLUGIN_SEARCH_PATHS for tokenization
+   char *paths = strdup(PLUGIN_SEARCH_PATHS);
+   if (!paths) {
+      fprintf(stderr, "Error: Memory allocation failed\n");
+      return 1;
+   }
+
+   // Split the comma-separated string
+   char *path = strtok(paths, ",");
+   while (path && !plugin_path) {
+      // Trim leading/trailing whitespace
+      while (*path == ' ') path++;
+      char *end = path + strlen(path) - 1;
+      while (end > path && *end == ' ') *end-- = '\0';
+
+      struct stat statbuf;
+      if (stat(path, &statbuf) == -1 || !S_ISDIR(statbuf.st_mode)) {
+         fprintf(stderr, "Error: Invalid directory '%s'\n", path);
+      } else {
+         plugin_path = search_directory(path, PLUGIN_FOLDER);
+      }
+      path = strtok(NULL, ",");
+   }
+   free(paths);
+
+   if (plugin_path) {
+      register_dynamic_functions(ctx, plugin_path);
+      free(plugin_path);
+   } else {
+      printf("Warning: Plugin folder '%s' not found\n", PLUGIN_FOLDER);
+   }
 
    return 0;
 }

@@ -1,21 +1,26 @@
-var fs = require('fs');
-const SHEENS = require('littlesheens');
+var SHEENS = null;
+try {
+   SHEENS = require('littlesheens');
+} catch (e) {}
 
-SHEENS.times.enable();
-
-function print() {
-  console.log(...arguments);
+if (SHEENS) {
+   var fs = require('fs');
+   SHEENS.times.enable();
+   walk = SHEENS.walk;
+   Times = SHEENS.times;
 }
+
+Times.enable();
 
 var Cfg = {
    MaxSteps: 100,
    debug: false,
    timers: [],
-   fire: function (id, dest) { 
+   fire: function (id, dest) {
       var message = {to: dest, event: id};
-      print("FIRE: ", message);
-      var result= process_input(crew_js, message);
-      print(result.emitted);
+      console.log("FIRE: ", message);
+      var result = process_input(crew_js, message);
+      console.log(result.emitted);
       crew_js = result.crew;
    }
 };
@@ -41,7 +46,7 @@ function GetSpec(filename, id) {
 // CrewProcess
 //
 function CrewProcess(crew_js, message_js) {
-    Stats.CrewProcess++;
+   Stats.CrewProcess++;
 
    try {
       var crew = JSON.parse(crew_js);
@@ -59,9 +64,9 @@ function CrewProcess(crew_js, message_js) {
          if (typeof targets == 'string') {
             targets = [targets];
          }
-         print("CrewProcess routing: ", JSON.stringify(targets));
+         console.log("CrewProcess routing: ", JSON.stringify(targets));
       } else {
-         print("CrewProcess routing to all");
+         console.log("CrewProcess routing to all");
          // RDL:  Could add a no unsolicited flag
          // The entire crew will see this message.
          targets = [];
@@ -69,7 +74,7 @@ function CrewProcess(crew_js, message_js) {
             targets.push(mid);
          }
       }
-      //print(targets);
+      //console.log(targets);
 
       var steppeds = {};
       for (var i = 0; i < targets.length; i++) {
@@ -84,17 +89,17 @@ function CrewProcess(crew_js, message_js) {
                node: machine.node,
                bs: machine.bs
             };
-            
+
             //
             // WALK the spec
             //
-            steppeds[mid] = SHEENS.walk(Cfg, spec, state, message);
+            steppeds[mid] = walk(Cfg, spec, state, message);
          } // Otherwise just move on.
       }
 
       return JSON.stringify(steppeds);
    } catch (err) {
-      print("CrewProcess error", err, JSON.stringify(err));
+      console.log("CrewProcess error", err, JSON.stringify(err));
       throw JSON.stringify({err: err, errstr: JSON.stringify(err)});
    }
 }
@@ -114,12 +119,12 @@ function GetEmitted(steppeds_js) {
             emitted.push(JSON.stringify(msgs[i]));
          }
          if (steppeds[mid].stoppedBecause == "limited") {
-            print("ERROR: Hit limit");
+            console.log("ERROR: Hit limit");
          }
       }
       return emitted;
    } catch (err) {
-      print("GetEmitted error", err, JSON.stringify(err));
+      console.log("GetEmitted error", err, JSON.stringify(err));
       throw JSON.stringify({err: err, errstr: JSON.stringify(err)});
    }
 }
@@ -143,7 +148,7 @@ function CrewUpdate(crew_js, steppeds_js) {
 
       return JSON.stringify(crew);
    } catch (err) {
-      print("CrewUpdate error", err, JSON.stringify(err));
+      console.log("CrewUpdate error", err, JSON.stringify(err));
       throw JSON.stringify({err: err, errstr: JSON.stringify(err)});
    }
 }
@@ -155,19 +160,19 @@ function process_input(crew, message) {
    var message = JSON.stringify(message);
 
    // process
-   var steppeds = CrewProcess(crew, message); 
+   var steppeds = CrewProcess(crew, message);
    var result = {};
 
    // get result
    result.emitted = GetEmitted(steppeds);
 
    // update crew
-   result.crew = CrewUpdate(crew, steppeds); 
+   result.crew = CrewUpdate(crew, steppeds);
    return result;
 }
 
-function genRandomId(length) { 
-   return Math.random().toString(36).substring(2, length + 2); 
+function genRandomId(length) {
+   return Math.random().toString(36).substring(2, length + 2);
 }
 
 //var id = "t2example-"+genRandomId(5);
@@ -182,30 +187,30 @@ var timers = {
 };
 
 var crew = {
-   id:"simpsons",
+   id: "simpsons",
    machines: {}
 };
 
 var id = genRandomId(5);
-crew.machines[id] = {spec:"specs/t2example.js",node:"stop", bs:{_id: id, timers: Object.assign({}, timers), parameters:parameters['Parameters']}};
+crew.machines[id] = {spec: "specs/t2example.js", node: "stop", bs: {_id: id, timers: Object.assign({}, timers), parameters: parameters['Parameters']}};
 
 timers.generateNow = false;
-timers.periodicInterval= 10000;
+timers.periodicInterval = 10000;
 id = genRandomId(5);
-crew.machines[id] = {spec:"specs/t2example.js",node:"stop", bs:{_id: id, timers: Object.assign({}, timers), parameters:parameters['Parameters']}};
+crew.machines[id] = {spec: "specs/t2example.js", node: "stop", bs: {_id: id, timers: Object.assign({}, timers), parameters: parameters['Parameters']}};
 
 var crew_js = JSON.stringify(crew);
-print(crew_js);
+console.log(crew_js);
 
 result = process_input(crew_js, {event: 'start'});
-print(result.emitted);
+console.log(result.emitted);
 crew_js = result.crew;
 
 // Clear all tasks after 60seconds
 setTimeout(function () {
    console.log('shutting down crews');
-   var result= process_input(crew_js, {event: 'stop'});
-   print(result.emitted);
+   var result = process_input(crew_js, {event: 'stop'});
+   console.log(result.emitted);
    crew_js = result.crew;
 
    timers = Cfg.timers;
@@ -213,7 +218,7 @@ setTimeout(function () {
       clearInterval(timers[i]);
    }
 
-   print();
-   print();
-   print("Performance summary:  ",SHEENS.times.summary());
+   console.log();
+   console.log();
+   console.log("Performance summary: ", Times.summary());
 }, 60000);

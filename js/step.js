@@ -38,13 +38,13 @@ function step(ctx, spec, state, message) {
       //
       // Actions
       //
-      var actions= node.actions;
+      var actions = node.actions;
       if (!actions) {
          actions = [node.action];
       }
 
       for (var i = 0; i < actions.length; i++) {
-         var action= actions[i];
+         var action = actions[i];
          if (action) {
             //
             // interpreter
@@ -58,11 +58,11 @@ function step(ctx, spec, state, message) {
                var evaled = sandboxedAction(ctx, bs, action.source);
                bs = evaled.bs;
                emitted = evaled.emitted;
-            } else if(action.type == 'log') {
+            } else if (action.type == 'log') {
                // do some checks
                print(action.text);
-            } else if(action.type == 'RBUS') {
-               print("RBUS: "+action.method+ " " + action.paths);
+            } else if (action.type == 'RBUS') {
+               print("RBUS: " + action.method + " " + action.paths);
             }
          }
       }
@@ -70,9 +70,9 @@ function step(ctx, spec, state, message) {
       //
       // Timers
       //
-      var timers= node.timers;
+      var timers = node.timers;
       if (!timers) {
-         timers= [node.timer];
+         timers = [node.timer];
       }
 
       for (var i = 0; i < timers.length; i++) {
@@ -82,7 +82,10 @@ function step(ctx, spec, state, message) {
 
             // safely evalute the field
             var delay = sandboxedStatement(ctx, bs, timer.delay);
-
+            if (typeof delay !== 'number' || delay <= 0) {
+               if (ctx.debug) console.log("\nInvalid timer delay: ", delay, " for timer ", timer.id);
+               continue;
+            }
             // only set timer if delay is given
             if (delay) {
                ctx.timers.push(setTimeout(ctx.fire, delay, timer.id, [bs._id]));
@@ -111,7 +114,7 @@ function step(ctx, spec, state, message) {
       for (var i = 0; i < branches.length; i++) {
          var branch = branches[i];
 
-         if (ctx.debug) print("TEST BRANCH:  ",branch);
+         if (ctx.debug) print("TEST BRANCH:  ", branch);
 
          //
          // pattern
@@ -124,14 +127,14 @@ function step(ctx, spec, state, message) {
             //print(pattern, against, bs);
             var bss = match(ctx, pattern, against, bs);
             if (!bss || bss.length == 0) {
-               if(ctx.debug) print("NO MATCH: ",against, pattern);
+               if (ctx.debug) print("NO MATCH: ", against, pattern);
                continue;
             }
             if (1 < bss.length) {
                throw {error: "too many sets of bindings", bss: bss};
             }
             bs = bss[0];
-            if(ctx.debug) print("MATCHED: ", against, pattern);
+            if (ctx.debug) print("MATCHED: ", against, pattern);
          }
 
          //
@@ -147,7 +150,7 @@ function step(ctx, spec, state, message) {
             }
             bs = evaled.bs;
          }
-         
+
          //
          // Branching test
          //
@@ -156,9 +159,9 @@ function step(ctx, spec, state, message) {
             if (!evaled) {
                continue;
             }
-            if(ctx.debug) print("TEST MATCHED: ", branch.test, evaled);
+            if (ctx.debug) print("TEST MATCHED: ", branch.test, evaled);
          }
-         
+
 
          if (typeof branch.target === 'object')
             return {to: {node: branch.target.dest, bs: bs}, consumed: consuming, emitted: emitted};
@@ -200,7 +203,7 @@ function walk(ctx, spec, state, message) {
       }
 
       if (ctx.debug) {
-         print(i,": Stepping into ", JSON.stringify(stepped.to));
+         print(i, ": Stepping into ", JSON.stringify(stepped.to));
       }
       //
       // STEP
@@ -208,9 +211,9 @@ function walk(ctx, spec, state, message) {
       var maybe = step(ctx, spec, stepped.to, message);
       if (ctx.debug) {
          if (message) {
-            print(i,": **",JSON.stringify(message), "** -- ", JSON.stringify(stepped.to)," -> ", JSON.stringify(maybe));
+            print(i, ": **", JSON.stringify(message), "** -- ", JSON.stringify(stepped.to), " -> ", JSON.stringify(maybe));
          } else {
-            print(i,": ", JSON.stringify(stepped.to)," -> ", JSON.stringify(maybe));
+            print(i, ": ", JSON.stringify(stepped.to), " -> ", JSON.stringify(maybe));
          }
       }
 
