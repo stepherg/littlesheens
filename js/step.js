@@ -82,10 +82,6 @@ function step(ctx, spec, state, message) {
 
             // safely evalute the field
             var delay = sandboxedStatement(ctx, bs, timer.delay);
-            if (typeof delay !== 'number' || delay <= 0) {
-               if (ctx.debug) console.log("\nInvalid timer delay: ", delay, " for timer ", timer.id);
-               continue;
-            }
             // only set timer if delay is given
             if (delay) {
                ctx.timers.push(setTimeout(ctx.fire, delay, timer.id, [bs._id]));
