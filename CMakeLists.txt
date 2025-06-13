@@ -53,8 +53,6 @@ if(NOT JANSSON_LIBRARY)
     message(FATAL_ERROR "jansson library not found")
 endif()
 
-
-
 # Duktape configuration
 set(DUKVERSION "duktape-2.7.0")
 set(DUK_SRC "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src")
@@ -130,6 +128,24 @@ add_custom_command(
 set(SPECS_DIR "${CMAKE_BINARY_DIR}/specs")
 file(MAKE_DIRECTORY ${SPECS_DIR})
 file(GLOB YAML_FILES "${SPEC_DIR}/*.yaml")
+foreach(YAML_FILE ${YAML_FILES})
+    get_filename_component(FILE_NAME ${YAML_FILE} NAME_WE)
+    set(JS_FILE "${SPECS_DIR}/${FILE_NAME}.js")
+    add_custom_command(
+        OUTPUT ${JS_FILE}
+        COMMAND cat ${YAML_FILE} | yaml2json | jq . > ${JS_FILE}
+        DEPENDS ${YAML_FILE}
+        COMMENT "Converting ${FILE_NAME}.yaml to ${FILE_NAME}.js"
+        VERBATIM
+    )
+    list(APPEND JS_FILES ${JS_FILE})
+endforeach()
+
+# Convert node YAML specs to JS
+set(SPECS_DIR "${CMAKE_SOURCE_DIR}/node/specs")
+set(SPECS_SRC_DIR "${CMAKE_SOURCE_DIR}/node/spec_source")
+file(MAKE_DIRECTORY ${SPECS_DIR})
+file(GLOB YAML_FILES "${SPECS_SRC_DIR}/*.yaml")
 foreach(YAML_FILE ${YAML_FILES})
     get_filename_component(FILE_NAME ${YAML_FILE} NAME_WE)
     set(JS_FILE "${SPECS_DIR}/${FILE_NAME}.js")

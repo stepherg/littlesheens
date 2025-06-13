@@ -9,24 +9,36 @@
          "type": "cppdbg",
          "request": "launch",
          "program": "${workspaceFolder}/build/driver",
-         "args": ["${workspaceFolder}/build/index.js"],
+         "args": [
+            "${workspaceFolder}/node/index.js"
+         ],
          "stopAtEntry": false,
-         "cwd": "${workspaceFolder}/build",
+         "cwd": "${workspaceFolder}/node",
          "environment": [],
          "externalConsole": false,
          "MIMode": "gdb",
          "setupCommands": [
-             {
-                 "description": "Enable pretty-printing for gdb",
-                 "text": "-enable-pretty-printing",
-                 "ignoreFailures": true
-             },
-             {
-                 "description": "Set Disassembly Flavor to Intel",
-                 "text": "-gdb-set disassembly-flavor intel",
-                 "ignoreFailures": true
-             }
+            {
+               "description": "Enable pretty-printing for gdb",
+               "text": "-enable-pretty-printing",
+               "ignoreFailures": true
+            },
+            {
+               "description": "Set Disassembly Flavor to Intel",
+               "text": "-gdb-set disassembly-flavor intel",
+               "ignoreFailures": true
+            }
          ]
+      },
+      {
+         "name": "Node.js",
+         "program": "${workspaceFolder}/node/index.js",
+         "request": "launch",
+         "skipFiles": [
+            "<node_internals>/**"
+         ],
+         "type": "node",
+         "cwd": "${workspaceFolder}/node"
       }
    ]
 }

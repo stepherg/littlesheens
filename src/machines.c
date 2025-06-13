@@ -54,7 +54,7 @@ typedef struct {
 #define PLUGIN_FOLDER "sheens-plugin"
 #endif
 #ifndef PLUGIN_SEARCH_PATHS
-#define PLUGIN_SEARCH_PATHS ".,/usr/lib"
+#define PLUGIN_SEARCH_PATHS ".,../,/usr/lib"
 #endif
 
 #define MAX_REG_HANDLES 50
@@ -193,22 +193,6 @@ static duk_ret_t providerer(duk_context *dctx) {
 
    return 1;
 }
-
-#if 0
-char *strdup(const char *s) {
-   size_t n;
-   char *acc;
-
-   if (s == NULL) return NULL;
-
-   n = strlen(s) + 1;
-   acc = (char *)malloc(n);
-   if (acc == (char *)0) {
-      return (char *)0;
-   }
-   return (char *)memcpy(acc, s, n);
-}
-#endif
 
 int copystr(char *dst, int limit, char *src) {
    if (src == NULL) {
@@ -367,25 +351,10 @@ int evalf(char *fmt, ...) {
       free(buf);
       return MACH_TOO_BIG;
    }
-#if 0
-   int rc = duk_peval_string(ctx->dctx, buf);
-   va_end(args);
-   free(buf);
-
-   if (rc != 0) {
-      const char *err = duk_safe_to_string(ctx->dctx, -1);
-      fprintf(stderr, "evalf error %s\n", err);
-      rc = MACH_SAD;
-   } else {
-      rc = MACH_OKAY;
-   }
-   duk_pop(ctx->dctx);
-#else
    int rc = mach_eval(buf, dst, buf_limit);
    va_end(args);
    free(buf);
    free(dst); // discard output
-#endif
 
    return rc;
 }
