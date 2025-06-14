@@ -57,7 +57,6 @@ function sandboxedAction(ctx, bs, src) {
       "var debug_logging = [];\n" +
       "var env = {\n" +
       "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
-<<<<<<< HEAD
       "  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },\n" +
       "  generateRandomInt: function(min,max) {\n" +
       "      min = Math.ceil(min);\n" +
@@ -78,12 +77,6 @@ function sandboxedAction(ctx, bs, src) {
       "  out: function(x) { emitting.push(x); }\n" +
       "}\n" +
       "\n" +
-=======
-      "  log: function(...args) { debug_logging.push(...args); },\n" + 
-      "  out: function(x) { emitting.push(x); }\n" + 
-      "}\n" + 
-      "\n" + 
->>>>>>> fce9f5f (Add additional JS functions to the sandbox)
       "var bs = (function(_) {\n" + src + "\n})(env);\n";
 
    // The following conditional checks for 'safeEval', might have
@@ -120,8 +113,6 @@ function sandboxedAction(ctx, bs, src) {
             "  log: function(...args) { debug_logging.push(...args); },\n" + 
             "  out: function(x) { emitting.push(x); }\n" + 
             "}\n" + 
-//            "var ctx = " + JSON.stringify(ctx_fn) + "\n" + 
-//            "\n" + 
             "var bs = (function(_) {\n" + src + "\n})(env);\n";
 
          // 'safeEval' wants an expression.  Build a called function
