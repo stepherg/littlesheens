@@ -58,9 +58,9 @@ nodes:
 
           for (var i = 0; i < params.length; i++) {
             if (params[i].name)
-              results[params[i].name] = _.rbus_getValue(params[i].reference);
+              results[params[i].name] = rbus_getValue(params[i].reference);
             else
-              results[params[i].reference] = _.rbus_getValue(params[i].reference);
+              results[params[i].reference] = rbus_getValue(params[i].reference);
           }
 
           // get the RBUS stuff
