@@ -120,7 +120,7 @@ function sandboxedAction(ctx, bs, src) {
             "return JSON.stringify({bs: bs, debug_logging: debug_logging, emitted: emitting});\n" +
             "}();\n";
 
-         print(code);
+         //print(code);
 
          var result_js = sandbox(code, ctx_fn);
       }
@@ -149,6 +149,9 @@ function sandboxedAction(ctx, bs, src) {
    }
 }
 
+//
+// Single Expression
+//
 function sandboxedStatement(ctx, bs, src) {
    Times.tick("sandboxStatement");
 
