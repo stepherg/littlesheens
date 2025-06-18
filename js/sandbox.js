@@ -31,6 +31,12 @@ function generateRandomString(length) {
 };
 
 function rbus_getValue(path) { 
+   const startTime = new Date().getTime();
+   while (new Date().getTime() - startTime < 500) {
+      // Busy-wait loop
+   }
+   //console.log("5 seconds have passed (blocking)");
+   console.log(".");
    return generateRandomString(10); 
 }; 
 
@@ -152,8 +158,8 @@ function sandboxedAction(ctx, bs, src) {
 //
 // Single Expression
 //
-function sandboxedStatement(ctx, bs, src) {
-   Times.tick("sandboxStatement");
+function sandboxedExpression(ctx, bs, src) {
+   Times.tick("sandboxExpression");
 
    try {
       if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
@@ -171,6 +177,6 @@ function sandboxedStatement(ctx, bs, src) {
    } catch (e) {
       print("sandbox statement error", e);
    } finally {
-      Times.tock("sandboxStatement");
+      Times.tock("sandboxExpression");
    }
 }
