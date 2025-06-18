@@ -17,11 +17,15 @@ var Cfg = {
    debug: false,
    timers: [],
    fire: function (id, dest) {
-      var message = {to: dest, event: id};
-      console.log("FIRE: ", message);
-      var result = process_input(crew_js, message);
-      console.log(result.emitted);
-      crew_js = result.crew;
+      var ev= {to: dest, event: id};
+      console.log("EVENT TIMER: ", ev);
+      crew_js = process_event(crew_js, ev);
+   },
+   // rbus_event params
+   action_callback: function(id, dest) {
+      var ev= {to: dest, event: id};
+      console.log("EVENT ACTION: ", ev);
+      crew_js = process_event(crew_js, ev);
    }
 };
 
@@ -41,6 +45,70 @@ function GetSpec(filename, id) {
    spec = spec.replaceAll('${id}', id);
    return JSON.parse(spec);
 }
+
+function process_t2_parameters(params) {
+   var results = {}
+   for (var i = 0; i < params.length; i++) {
+      //console.log("Processing ", params[i]);
+      if (params[i].name)
+         results[params[i].name] = rbus_getValue(params[i].reference);
+      else
+         results[params[i].reference] = rbus_getValue(params[i].reference);
+   }
+   return results;
+}
+
+//
+// Invoke single JRPC
+// 
+function _process_jrpc(call) {
+   var method = call["method"]; 
+   var params = call["params"];
+   var result = {}
+   try {
+      fn = eval(method);
+
+      if (typeof fn === "function") {
+         if (Array.isArray(params) == true){
+            var f_result = fn.apply(null,params);
+            result = {"jsonrpc": call["jsonrpc"], "result": f_result, "id": call["id"]};
+         } else if (typeof params  ===  "object") {
+            var param_arr = Object.values(params);
+            var f_result = fn.apply(null,param_arr);
+            result = {"jsonrpc": call["jsonrpc"], "result": f_result, "id": call["id"]};
+            //result={"jsonrpc": "2.0", "error": {"code": -32602, "message": "Invalid params"}, "id": call["id"]}
+         }
+      } else {
+         result = {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
+      }
+   } catch(e){
+      if (e.name === "ReferenceError" || e.name === "TypeError") { //IE7 uses TypeError instead
+         result={"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": call["id"]}
+      }
+   }
+   return result;
+}
+
+//
+// Determine if batch [] or single
+//
+function process_jrpc(calls) {
+   var results = [];
+   if (Array.isArray(calls) == true){
+      if (calls.length != 0) {
+         calls.forEach(function(call) {
+            results.push(_process_jrpc(call));
+         });
+      } else {
+         results = {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
+      }
+   } else {
+      results = _process_jrpc(calls);
+   }
+   
+   return results;
+}
+
 
 //
 // CrewProcess
@@ -154,21 +222,36 @@ function CrewUpdate(crew_js, steppeds_js) {
 }
 
 //
-// process_input
+// process_event
 //
-function process_input(crew, message) {
-   var message = JSON.stringify(message);
+function process_event(crew, ev) {
+   var ev= JSON.stringify(ev);
 
    // process
-   var steppeds = CrewProcess(crew, message);
+   var steppeds = CrewProcess(crew, ev);
    var result = {};
 
    // get result
    result.emitted = GetEmitted(steppeds);
+   for (var i = 0; i < result.emitted.length; i++) {
+      //console.log(result.emitted[i]);
+      var emit = JSON.parse(result.emitted[i]);
+      if(emit.hasOwnProperty("actions")) {
+         // if there's an action
+         for (var j = 0; j < emit.actions.length; j++) {
+            var action = emit.actions[j];
+            console.log(action);
+            if(action.hasOwnProperty("jsonrpc")) {
+               console.log(process_jrpc(action));
+            }
+         }
+      }
+      
+   }
 
    // update crew
    result.crew = CrewUpdate(crew, steppeds);
-   return result;
+   return result.crew;
 }
 
 function genRandomId(length) {
@@ -180,17 +263,16 @@ function genRandomId(length) {
 var parameters = JSON.parse('{"Parameters": [{"type":"dataModel","reference":"Profile.Name","reportEmpty":true},{"type":"dataModel","reference":"Profile.Version","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_SystemTime","name":"timestamp","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.ProductClass","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_COMCAST-COM_CM_MAC","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_GatewayManagement.Gateway.1.MacAddress","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_GatewayManagement.Gateway.2.MacAddress","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_GatewayManagement.GatewayRestoreAttemptCount","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_GatewayManagement.Gateway.1.OperationStatus","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_GatewayManagement.Gateway.2.OperationStatus","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_GatewayManagement.Gateway.1.ActiveStatus","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_GatewayManagement.Gateway.2.ActiveStatus","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_WanManager.InterfaceAvailableStatus","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_WanManager.InterfaceActiveStatus","reportEmpty":true},{"type":"dataModel","reference":"Device.X_RDK_Remote.Device.2.Status","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.supported","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.batteryHealth","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.batteryStatus","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.chargingStatus","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.estimatedChargeRemaining","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.estimatedMinutesRemaining","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.secondsOnBattery","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.batteryCapacity","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.X_RDKCENTRAL-COM_batteryBackup.serialNumber","reportEmpty":true},{"type":"dataModel","reference":"Device.Cellular.X_RDK_Status","reportEmpty":true},{"type":"dataModel","reference":"Device.Cellular.X_RDK_Enable","reportEmpty":true},{"type":"dataModel","reference":"Device.Cellular.Interface.1.X_RDK_RadioEnvConditions","reportEmpty":true},{"type":"dataModel","reference":"Device.Cellular.Interface.1.RSSI","reportEmpty":true},{"type":"dataModel","reference":"Device.Cellular.Interface.1.X_RDK_SNR","reportEmpty":true},{"type":"dataModel","reference":"Device.Cellular.Interface.1.RSRP","reportEmpty":true},{"type":"dataModel","reference":"Device.Cellular.Interface.1.RSRQ","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.SerialNumber","reportEmpty":true},{"type":"dataModel","reference":"Device.DeviceInfo.SoftwareVersion","reportEmpty":true}]}');
 //var parameters = JSON.parse('{"Parameters": [{"type":"dataModel","reference":"Profile.Name","reportEmpty":true}]}');
 
-var timers = {
-   generateNow: true,
-   firstInterval: 0,
-   periodicInterval: 0,
-};
-
 var crew = {
    id: "simpsons",
    machines: {}
 };
 
+var timers = {
+   generateNow: true,
+   firstInterval: 0,
+   periodicInterval: 0,
+};
 var id = genRandomId(5);
 crew.machines[id] = {spec: "specs/t2example.js", node: "stop", bs: {_id: id, timers: Object.assign({}, timers), parameters: parameters['Parameters']}};
 
@@ -202,16 +284,12 @@ crew.machines[id] = {spec: "specs/t2example.js", node: "stop", bs: {_id: id, tim
 var crew_js = JSON.stringify(crew);
 console.log(crew_js);
 
-result = process_input(crew_js, {event: 'start'});
-console.log(result.emitted);
-crew_js = result.crew;
+crew_js = process_event(crew_js, {event: 'start'});
 
 // Clear all tasks after 60seconds
 setTimeout(function () {
    console.log('shutting down crews');
-   var result = process_input(crew_js, {event: 'stop'});
-   console.log(result.emitted);
-   crew_js = result.crew;
+   crew_js = process_event(crew_js, {event: 'stop'});
 
    timers = Cfg.timers;
    for (var i = 0; i < timers.length; i++) {

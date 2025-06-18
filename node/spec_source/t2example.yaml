@@ -54,18 +54,21 @@ nodes:
           // iterate over Paramaters in bs
           var params =  bs.parameters;
 
-          var results = {};
+          actions = []
 
-          for (var i = 0; i < params.length; i++) {
-            if (params[i].name)
-              results[params[i].name] = rbus_getValue(params[i].reference);
-            else
-              results[params[i].reference] = rbus_getValue(params[i].reference);
-          }
+          // submit the work
+          actions.push({
+            "jsonrpc": "2.0",
+            "method": "process_t2_parameters",
+            "id": id,
+            "params": {
+              "Parameters": params
+            }
+          });
 
           // get the RBUS stuff
           var now = parseInt(Date.now()/1000)
-          _.out({"ts":now, "id": id, "did":"task", "results":results});
+          _.out({"ts":now, "id": id, "did":"task", "actions":actions});
           return _.bindings;
       #- type: RBUS
       #  method: GET
