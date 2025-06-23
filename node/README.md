@@ -8,6 +8,7 @@ A Node.js native addon for interacting with the RBus system, providing bindings 
 - **RBus**: Ensure RBus libraries are installed (`librbus`, typically at `/usr/lib` or `/usr/local/lib`).
 - **Build Tools**: `gcc`, `make`, `python3`, and `node-gyp`.
 - **Dependencies**: `node-addon-api@5.0.0`, `safe-eval@0.4.1`, and `littlesheens` (local module).
+- **Support Utilities**: To populate RBus, a utility like `rbus-tr181` can be used for development. https://github.com/stepherg/rbus-tr181
 
 ## Building the Project
 
