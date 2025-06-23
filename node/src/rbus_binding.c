@@ -9,42 +9,46 @@
 #define RBUS_TEMP_ERROR_MSG_LEN 256
 #define EVENT_NAME_MAX_LEN 256
 #define PROPERTY_NAME_MAX_LEN 256
-#define INITIAL_PROPERTIES 10 // Initial size for dynamic properties array
+#define CALLBACK_KEY_LEN 64
+#define MAX_PROPERTIES 10 // Maximum properties per event
+#define MAX_SUBSCRIPTIONS 50 // Maximum number of subscriptions
+#define MAX_TSFN_DATA 50 // Maximum number of concurrent ThreadSafeData instances
 
-// --- Global Mutex for Subscriptions ---
+// --- Global Mutex for Subscriptions and ThreadSafeData Pool ---
 static pthread_mutex_t subscriptions_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Structure to store subscription data
 typedef struct SubscriptionData {
    napi_env env;
    napi_threadsafe_function tsfn;
-   char *name;
-   char *callback_key;
+   char name[EVENT_NAME_MAX_LEN];
+   char callback_key[CALLBACK_KEY_LEN];
    napi_ref callback_ref;
    napi_ref user_data_ref;
    bool in_use;
-   struct SubscriptionData *next;
 } SubscriptionData;
 
 // Structure to store a single property
 typedef struct {
-   char *key;
+   char key[PROPERTY_NAME_MAX_LEN];
    rbusValue_t value; // Stores any RBus value type
 } PropertyData;
 
 // Thread-safe function callback data
 typedef struct {
-   char *event_name;
+   char event_name[EVENT_NAME_MAX_LEN];
    rbusEventType_t event_type;
    rbusHandle_t handle;
-   PropertyData *properties;
+   PropertyData properties[MAX_PROPERTIES];
    int property_count;
-   SubscriptionData *sub;
+   SubscriptionData *sub; // Pointer to SubscriptionData in static array
+   bool in_use; // Flag to track pool allocation
 } ThreadSafeData;
 
-// Global linked list for subscriptions
-static SubscriptionData *subscriptions_head = NULL;
-static int subscription_count = 0;
+// Global arrays for subscriptions and ThreadSafeData pool
+static SubscriptionData subscriptions[MAX_SUBSCRIPTIONS];
+static ThreadSafeData tsfn_data_pool[MAX_TSFN_DATA];
+static int subscription_count = 0; // Number of active subscriptions
 
 static const char *event_type_to_string(rbusEventType_t type) {
    switch (type) {
@@ -77,13 +81,15 @@ static rbusHandle_t get_rbus_handle(napi_env env, napi_value exports) {
    napi_value handle_ptr;
    napi_status status = napi_get_named_property(env, exports, "rbusHandle", &handle_ptr);
    if (status != napi_ok) {
-      napi_throw_error(env, NULL, "No rbus handle found. Ensure rbusOpenHandle was called and its result stored.");
+      throw_error(env, "No rbus handle found. Ensure rbusOpenHandle was called and its result stored.", 0, status);
+      //napi_throw_error(env, NULL, "No rbus handle found. Ensure rbusOpenHandle was called and its result stored.");
       return NULL;
    }
    void *handle;
    status = napi_get_value_external(env, handle_ptr, &handle);
    if (status != napi_ok) {
-      napi_throw_error(env, NULL, "Failed to get handle value from external");
+      throw_error(env, "Failed to get handle value from external", 0, status);
+      //napi_throw_error(env, NULL, "Failed to get handle value from external");
       return NULL;
    }
    return (rbusHandle_t)handle;
@@ -264,7 +270,7 @@ static void tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint
    SubscriptionData *sub = (SubscriptionData *)finalize_data;
    if (sub) {
       pthread_mutex_lock(&subscriptions_mutex);
-      fprintf(stderr, "Finalizing subscription for event '%s'\n", sub->name ? sub->name : "null");
+      fprintf(stderr, "Finalizing subscription for event '%s'\n", sub->name);
       if (sub->in_use) {
          if (sub->callback_ref) {
             napi_delete_reference(env, sub->callback_ref);
@@ -272,21 +278,12 @@ static void tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint
          if (sub->user_data_ref) {
             napi_delete_reference(env, sub->user_data_ref);
          }
-         free(sub->name);
-         free(sub->callback_key);
+         sub->name[0] = '\0';
+         sub->callback_key[0] = '\0';
          sub->in_use = false;
          subscription_count--;
       }
-      SubscriptionData **current = &subscriptions_head;
-      while (*current) {
-         if (*current == sub) {
-            *current = sub->next;
-            break;
-         }
-         current = &(*current)->next;
-      }
       pthread_mutex_unlock(&subscriptions_mutex);
-      free(sub);
    }
 }
 
@@ -302,7 +299,11 @@ static void tsfn_call(napi_env env, napi_value js_callback, void *context, void 
       fprintf(stderr, "Error: Null env in tsfn_call\n");
       goto cleanup;
    }
-   if (!sub->in_use) {
+   pthread_mutex_lock(&subscriptions_mutex);
+   bool sub_in_use = sub->in_use;
+   pthread_mutex_unlock(&subscriptions_mutex);
+
+   if (!sub_in_use) {
       fprintf(stderr, "Error: Subscription not in use in tsfn_call\n");
       goto cleanup;
    }
@@ -343,7 +344,7 @@ static void tsfn_call(napi_env env, napi_value js_callback, void *context, void 
    }
 
    napi_value name, type;
-   status = napi_create_string_utf8(env, ts_data->event_name ? ts_data->event_name : "", NAPI_AUTO_LENGTH, &name);
+   status = napi_create_string_utf8(env, ts_data->event_name, NAPI_AUTO_LENGTH, &name);
    if (status != napi_ok) {
       fprintf(stderr, "N-API Error: Failed to create event name string (%d)\n", status);
       napi_close_handle_scope(env, scope);
@@ -380,7 +381,7 @@ static void tsfn_call(napi_env env, napi_value js_callback, void *context, void 
 
       for (int i = 0; i < ts_data->property_count; i++) {
          PropertyData *prop = &ts_data->properties[i];
-         if (prop->key && prop->value) {
+         if (prop->key[0] && prop->value) {
             napi_value prop_val = convert_rbus_value_to_js(env, prop->value);
             if (!prop_val) {
                fprintf(stderr, "N-API Error: Failed to convert property value for key '%s'\n", prop->key);
@@ -449,7 +450,7 @@ static void tsfn_call(napi_env env, napi_value js_callback, void *context, void 
       napi_get_and_clear_last_exception(env, &exception);
       napi_value err_str;
       napi_coerce_to_string(env, exception, &err_str);
-      char buffer[256];
+      char buffer[RBUS_TEMP_ERROR_MSG_LEN];
       size_t err_len;
       napi_get_value_string_utf8(env, err_str, buffer, sizeof(buffer), &err_len);
       fprintf(stderr, "RBus event handler error: %.*s\n", (int)err_len, buffer);
@@ -457,116 +458,97 @@ static void tsfn_call(napi_env env, napi_value js_callback, void *context, void 
 
 cleanup:
    if (ts_data) {
-      if (ts_data->event_name) {
-         free(ts_data->event_name);
-      }
       for (int i = 0; i < ts_data->property_count; i++) {
-         free(ts_data->properties[i].key);
          if (ts_data->properties[i].value) {
             rbusValue_Release(ts_data->properties[i].value);
+            ts_data->properties[i].value = NULL;
          }
+         ts_data->properties[i].key[0] = '\0';
       }
-      free(ts_data->properties);
-      free(ts_data);
+      ts_data->event_name[0] = '\0';
+      ts_data->property_count = 0;
+      pthread_mutex_lock(&subscriptions_mutex);
+      ts_data->in_use = false; // Return to pool
+      pthread_mutex_unlock(&subscriptions_mutex);
    }
    napi_close_handle_scope(env, scope);
 }
 
-// Event handler callback
 static void event_handler(rbusHandle_t handle, rbusEvent_t const *event, rbusEventSubscription_t *subscription) {
    SubscriptionData *sub = (SubscriptionData *)subscription->userData;
    pthread_mutex_lock(&subscriptions_mutex);
-   if (!sub || !sub->in_use || !sub->name || !event->name || strcmp(sub->name, event->name) != 0) {
+   if (!sub || !sub->in_use || !sub->name[0] || !event->name || strcmp(sub->name, event->name) != 0) {
       pthread_mutex_unlock(&subscriptions_mutex);
       fprintf(stderr, "Error: Invalid subscription data or event name mismatch in event_handler\n");
       return;
    }
    bool in_use = sub->in_use;
+
+   // Find a free ThreadSafeData slot
+   ThreadSafeData *ts_data = NULL;
+   for (int i = 0; i < MAX_TSFN_DATA; ++i) {
+      if (!tsfn_data_pool[i].in_use) {
+         ts_data = &tsfn_data_pool[i];
+         ts_data->in_use = true;
+         break;
+      }
+   }
+
+   if (!ts_data) {
+      pthread_mutex_unlock(&subscriptions_mutex);
+      fprintf(stderr, "Warning: ThreadSafeData pool exhausted, event '%s' dropped\n", event->name);
+      return;
+   }
+
+   memset(ts_data, 0, sizeof(ThreadSafeData));
    pthread_mutex_unlock(&subscriptions_mutex);
 
    if (!in_use) {
+      pthread_mutex_lock(&subscriptions_mutex);
+      ts_data->in_use = false;
+      pthread_mutex_unlock(&subscriptions_mutex);
       return;
    }
 
-   ThreadSafeData *ts_data = (ThreadSafeData *)malloc(sizeof(ThreadSafeData));
-   if (!ts_data) {
-      fprintf(stderr, "Error: Failed to allocate ThreadSafeData in event_handler\n");
+   if (strlen(event->name) >= EVENT_NAME_MAX_LEN) {
+      fprintf(stderr, "Error: Event name too long in event_handler\n");
+      pthread_mutex_lock(&subscriptions_mutex);
+      ts_data->in_use = false;
+      pthread_mutex_unlock(&subscriptions_mutex);
       return;
    }
-   memset(ts_data, 0, sizeof(ThreadSafeData));
-
-   ts_data->event_name = strdup(event->name ? event->name : "");
-   if (!ts_data->event_name) {
-      free(ts_data);
-      fprintf(stderr, "Error: Failed to strdup event name in event_handler\n");
-      return;
-   }
+   strncpy(ts_data->event_name, event->name ? event->name : "", EVENT_NAME_MAX_LEN - 1);
    ts_data->event_type = event->type;
    ts_data->handle = handle;
    ts_data->sub = sub;
 
-   // Process event->data
    if (event->data) {
       rbusObject_t obj = event->data;
       rbusProperty_t prop = rbusObject_GetProperties(obj);
       int prop_count = 0;
-      int properties_capacity = INITIAL_PROPERTIES;
-      PropertyData *properties = (PropertyData *)malloc(properties_capacity * sizeof(PropertyData));
-      if (!properties) {
-         free(ts_data->event_name);
-         free(ts_data);
-         fprintf(stderr, "Error: Failed to allocate properties array in event_handler\n");
-         return;
-      }
-      memset(properties, 0, properties_capacity * sizeof(PropertyData));
 
-      while (prop) {
+      while (prop && prop_count < MAX_PROPERTIES) {
          const char *key = rbusProperty_GetName(prop);
          rbusValue_t val = rbusProperty_GetValue(prop);
          if (key && val) {
-            if (prop_count >= properties_capacity) {
-               properties_capacity *= 2;
-               PropertyData *new_properties = (PropertyData *)realloc(properties, properties_capacity * sizeof(PropertyData));
-               if (!new_properties) {
-                  for (int i = 0; i < prop_count; i++) {
-                     free(properties[i].key);
-                     if (properties[i].value) {
-                        rbusValue_Release(properties[i].value);
-                     }
-                  }
-                  free(properties);
-                  free(ts_data->event_name);
-                  free(ts_data);
-                  fprintf(stderr, "Error: Failed to reallocate properties array in event_handler\n");
-                  return;
-               }
-               properties = new_properties;
-               memset(properties + prop_count, 0, (properties_capacity - prop_count) * sizeof(PropertyData));
+            if (strlen(key) >= PROPERTY_NAME_MAX_LEN) {
+               fprintf(stderr, "Warning: Property key too long, skipping\n");
+               prop = rbusProperty_GetNext(prop);
+               continue;
             }
-            properties[prop_count].key = strdup(key);
-            if (!properties[prop_count].key) {
-               for (int i = 0; i < prop_count; i++) {
-                  free(properties[i].key);
-                  if (properties[i].value) {
-                     rbusValue_Release(properties[i].value);
-                  }
-               }
-               free(properties);
-               free(ts_data->event_name);
-               free(ts_data);
-               fprintf(stderr, "Error: Failed to strdup property key in event_handler\n");
-               return;
-            }
-            rbusValue_Init(&properties[prop_count].value);
-            rbusValue_Copy(properties[prop_count].value, val);
+            strncpy(ts_data->properties[prop_count].key, key, PROPERTY_NAME_MAX_LEN - 1);
+            rbusValue_Init(&ts_data->properties[prop_count].value);
+            rbusValue_Copy(ts_data->properties[prop_count].value, val);
             prop_count++;
          }
          prop = rbusProperty_GetNext(prop);
       }
-      ts_data->properties = properties;
       ts_data->property_count = prop_count;
+
+      if (prop) {
+         fprintf(stderr, "Warning: Exceeded maximum properties (%d), some properties ignored\n", MAX_PROPERTIES);
+      }
    } else {
-      ts_data->properties = NULL;
       ts_data->property_count = 0;
    }
 
@@ -574,15 +556,18 @@ static void event_handler(rbusHandle_t handle, rbusEvent_t const *event, rbusEve
    if (status != napi_ok) {
       fprintf(stderr, "Error: Failed to call threadsafe function for event '%s' (N-API status: %d)\n",
          event->name, status);
-      free(ts_data->event_name);
       for (int i = 0; i < ts_data->property_count; i++) {
-         free(ts_data->properties[i].key);
          if (ts_data->properties[i].value) {
             rbusValue_Release(ts_data->properties[i].value);
+            ts_data->properties[i].value = NULL;
          }
+         ts_data->properties[i].key[0] = '\0';
       }
-      free(ts_data->properties);
-      free(ts_data);
+      ts_data->event_name[0] = '\0';
+      ts_data->property_count = 0;
+      pthread_mutex_lock(&subscriptions_mutex);
+      ts_data->in_use = false;
+      pthread_mutex_unlock(&subscriptions_mutex);
    }
 }
 
@@ -615,29 +600,17 @@ static napi_value rbus_close_handle(napi_env env, napi_callback_info info) {
       return NULL;
    }
 
-   // Clean up subscriptions
    pthread_mutex_lock(&subscriptions_mutex);
-   SubscriptionData *current = subscriptions_head;
-   SubscriptionData *next = NULL;
-   int freed_count = 0;
-   while (current) {
-      next = current->next;
-      if (current->in_use) {
-         fprintf(stderr, "Unsubscribing event '%s'\n", current->name);
-         rbusEvent_Unsubscribe(handle, current->name);
-         napi_release_threadsafe_function(current->tsfn, napi_tsfn_release);
-         freed_count++;
+   for (int i = 0; i < MAX_SUBSCRIPTIONS; ++i) {
+      if (subscriptions[i].in_use) {
+         fprintf(stderr, "Unsubscribing event '%s'\n", subscriptions[i].name);
+         rbusEvent_Unsubscribe(handle, subscriptions[i].name);
+         napi_release_threadsafe_function(subscriptions[i].tsfn, napi_tsfn_release);
       }
-      current = next;
    }
-   subscriptions_head = NULL;
-   subscription_count -= freed_count;
-   if (subscription_count < 0) {
-      subscription_count = 0;
-   }
+   subscription_count = 0;
    pthread_mutex_unlock(&subscriptions_mutex);
 
-   // Close rbus handle after unsubscribing
    rbusError_t err = rbus_close(handle);
    if (err != RBUS_ERROR_SUCCESS) {
       throw_error(env, "rbus_close failed", err, napi_ok);
@@ -649,7 +622,6 @@ static napi_value rbus_close_handle(napi_env env, napi_callback_info info) {
    return result;
 }
 
-// Binding for rbus_set
 static napi_value rbus_set_value(napi_env env, napi_callback_info info) {
    size_t argc = 2;
    napi_value args[2];
@@ -673,49 +645,24 @@ static napi_value rbus_set_value(napi_env env, napi_callback_info info) {
       return NULL;
    }
 
-   size_t prop_len_bytes;
-   status = napi_get_value_string_utf8(env, args[0], NULL, 0, &prop_len_bytes);
-   if (status != napi_ok) {
-      throw_error(env, "Failed to get propertyName length", 0, status);
-      return NULL;
-   }
-   char *propertyName = (char *)malloc(prop_len_bytes + 1);
-   if (!propertyName) {
-      throw_error(env, "Failed to allocate memory for propertyName", 0, napi_ok);
-      return NULL;
-   }
-   status = napi_get_value_string_utf8(env, args[0], propertyName, prop_len_bytes + 1, NULL);
-   if (status != napi_ok) {
-      free(propertyName);
-      throw_error(env, "Failed to get propertyName string", 0, status);
+   char propertyName[PROPERTY_NAME_MAX_LEN];
+   size_t prop_len;
+   status = napi_get_value_string_utf8(env, args[0], propertyName, PROPERTY_NAME_MAX_LEN, &prop_len);
+   if (status != napi_ok || prop_len >= PROPERTY_NAME_MAX_LEN) {
+      throw_error(env, prop_len >= PROPERTY_NAME_MAX_LEN ? "propertyName too long" : "Failed to get propertyName string", 0, status);
       return NULL;
    }
 
-   size_t val_len_bytes;
-   status = napi_get_value_string_utf8(env, args[1], NULL, 0, &val_len_bytes);
-   if (status != napi_ok) {
-      free(propertyName);
-      throw_error(env, "Failed to get value length", 0, status);
-      return NULL;
-   }
-   char *val_str = (char *)malloc(val_len_bytes + 1);
-   if (!val_str) {
-      free(propertyName);
-      throw_error(env, "Failed to allocate memory for value string", 0, napi_ok);
-      return NULL;
-   }
-   status = napi_get_value_string_utf8(env, args[1], val_str, val_len_bytes + 1, NULL);
-   if (status != napi_ok) {
-      free(propertyName);
-      free(val_str);
-      throw_error(env, "Failed to get value string", 0, status);
+   char val_str[PROPERTY_NAME_MAX_LEN];
+   size_t val_len;
+   status = napi_get_value_string_utf8(env, args[1], val_str, PROPERTY_NAME_MAX_LEN, &val_len);
+   if (status != napi_ok || val_len >= PROPERTY_NAME_MAX_LEN) {
+      throw_error(env, val_len >= PROPERTY_NAME_MAX_LEN ? "value string too long" : "Failed to get value string", 0, status);
       return NULL;
    }
 
    rbusHandle_t handle = get_rbus_handle(env, exports);
    if (!handle) {
-      free(propertyName);
-      free(val_str);
       return NULL;
    }
 
@@ -786,23 +733,23 @@ static napi_value rbus_set_value(napi_env env, napi_callback_info info) {
       size_t str_len = strlen(val_str);
       if (str_len % 2 == 0) {
          size_t byte_len = str_len / 2;
-         uint8_t *bytes = (uint8_t *)malloc(byte_len);
-         if (bytes) {
+         uint8_t bytes[PROPERTY_NAME_MAX_LEN / 2];
+         if (byte_len <= sizeof(bytes)) {
             conversion_success = true;
             for (size_t i = 0; i < byte_len; i++) {
                unsigned int byte;
                if (sscanf(&val_str[i * 2], "%2x", &byte) == 1) {
                   bytes[i] = (uint8_t)byte;
                } else {
-                  free(bytes);
                   conversion_success = false;
                   break;
                }
             }
             if (conversion_success) {
                rbusValue_SetBytes(value, bytes, byte_len);
-               free(bytes);
             }
+         } else {
+            throw_error(env, "Byte array too long for static buffer", 0, napi_ok);
          }
       }
       break;
@@ -810,8 +757,6 @@ static napi_value rbus_set_value(napi_env env, napi_callback_info info) {
    case RBUS_PROPERTY:
    case RBUS_OBJECT: {
       rbusValue_Release(value);
-      free(propertyName);
-      free(val_str);
       throw_error(env, "Unsupported target value type for rbus_set: RBUS_PROPERTY or RBUS_OBJECT", 0, napi_ok);
       return NULL;
    }
@@ -821,24 +766,18 @@ static napi_value rbus_set_value(napi_env env, napi_callback_info info) {
       break;
    default:
       rbusValue_Release(value);
-      free(propertyName);
-      free(val_str);
       throw_error(env, "Unsupported or unknown target rbus value type for rbus_set", 0, napi_ok);
       return NULL;
    }
 
    if (!conversion_success) {
       rbusValue_Release(value);
-      free(propertyName);
-      free(val_str);
       throw_error(env, "Failed to convert string to target rbus type", 0, napi_ok);
       return NULL;
    }
 
    err = rbus_set(handle, propertyName, value, NULL);
    rbusValue_Release(value);
-   free(propertyName);
-   free(val_str);
 
    if (err != RBUS_ERROR_SUCCESS) {
       throw_error(env, "rbus_set failed", err, napi_ok);
@@ -850,7 +789,6 @@ static napi_value rbus_set_value(napi_env env, napi_callback_info info) {
    return result;
 }
 
-// Binding for rbus_subscribe_event
 static napi_value rbus_subscribe_event(napi_env env, napi_callback_info info) {
    size_t argc = 4;
    napi_value args[4];
@@ -874,21 +812,11 @@ static napi_value rbus_subscribe_event(napi_env env, napi_callback_info info) {
       return NULL;
    }
 
-   size_t event_len_bytes;
-   status = napi_get_value_string_utf8(env, args[0], NULL, 0, &event_len_bytes);
-   if (status != napi_ok) {
-      throw_error(env, "Failed to get eventName length", 0, status);
-      return NULL;
-   }
-   char *event_name = (char *)malloc(event_len_bytes + 1);
-   if (!event_name) {
-      throw_error(env, "Failed to allocate memory for eventName", 0, napi_ok);
-      return NULL;
-   }
-   status = napi_get_value_string_utf8(env, args[0], event_name, event_len_bytes + 1, NULL);
-   if (status != napi_ok) {
-      free(event_name);
-      throw_error(env, "Failed to get eventName string", 0, status);
+   char event_name[EVENT_NAME_MAX_LEN];
+   size_t event_len;
+   status = napi_get_value_string_utf8(env, args[0], event_name, EVENT_NAME_MAX_LEN, &event_len);
+   if (status != napi_ok || event_len >= EVENT_NAME_MAX_LEN) {
+      throw_error(env, event_len >= EVENT_NAME_MAX_LEN ? "eventName too long" : "Failed to get eventName string", 0, status);
       return NULL;
    }
 
@@ -896,13 +824,11 @@ static napi_value rbus_subscribe_event(napi_env env, napi_callback_info info) {
    if (argc > 3) {
       status = napi_typeof(env, args[3], &arg_type);
       if (status != napi_ok || arg_type != napi_number) {
-         free(event_name);
          throw_error(env, "timeout must be a number", 0, status);
          return NULL;
       }
       napi_get_value_int32(env, args[3], &timeout);
       if (timeout < 0) {
-         free(event_name);
          throw_error(env, "timeout must be non-negative", 0, napi_ok);
          return NULL;
       }
@@ -910,37 +836,37 @@ static napi_value rbus_subscribe_event(napi_env env, napi_callback_info info) {
 
    rbusHandle_t handle = get_rbus_handle(env, exports);
    if (!handle) {
-      free(event_name);
       return NULL;
    }
 
-   // Allocate new subscription
-   SubscriptionData *sub = (SubscriptionData *)malloc(sizeof(SubscriptionData));
+   pthread_mutex_lock(&subscriptions_mutex);
+   SubscriptionData *sub = NULL;
+   for (int i = 0; i < MAX_SUBSCRIPTIONS; ++i) {
+      if (!subscriptions[i].in_use) {
+         sub = &subscriptions[i];
+         break;
+      }
+   }
+
    if (!sub) {
-      free(event_name);
-      throw_error(env, "Failed to allocate subscription data", 0, napi_ok);
+      pthread_mutex_unlock(&subscriptions_mutex);
+      throw_error(env, "Maximum number of subscriptions reached", 0, napi_ok);
       return NULL;
    }
+
    memset(sub, 0, sizeof(SubscriptionData));
    sub->env = env;
-   sub->name = event_name;
+   strncpy(sub->name, event_name, EVENT_NAME_MAX_LEN - 1);
    sub->in_use = true;
 
-   char callback_key[64];
-   snprintf(callback_key, sizeof(callback_key), "rbus_callback_%p", sub);
-   sub->callback_key = strdup(callback_key);
-   if (!sub->callback_key) {
-      free(sub->name);
-      free(sub);
-      throw_error(env, "Failed to allocate callback key", 0, napi_ok);
-      return NULL;
-   }
+   snprintf(sub->callback_key, CALLBACK_KEY_LEN, "rbus_callback_%p", sub);
 
    status = napi_create_reference(env, args[1], 1, &sub->callback_ref);
    if (status != napi_ok) {
-      free(sub->name);
-      free(sub->callback_key);
-      free(sub);
+      sub->in_use = false;
+      sub->name[0] = '\0';
+      sub->callback_key[0] = '\0';
+      pthread_mutex_unlock(&subscriptions_mutex);
       throw_error(env, "Failed to create callback reference", 0, status);
       return NULL;
    }
@@ -949,27 +875,28 @@ static napi_value rbus_subscribe_event(napi_env env, napi_callback_info info) {
    if (argc > 2) {
       status = napi_create_reference(env, args[2], 1, &user_data_ref);
       if (status != napi_ok) {
+         sub->in_use = false;
          napi_delete_reference(env, sub->callback_ref);
-         free(sub->name);
-         free(sub->callback_key);
-         free(sub);
+         sub->name[0] = '\0';
+         sub->callback_key[0] = '\0';
+         pthread_mutex_unlock(&subscriptions_mutex);
          throw_error(env, "Failed to create userData reference", 0, status);
          return NULL;
       }
    }
    sub->user_data_ref = user_data_ref;
 
-   // async_resource_name is managed by N-API, no need to free
    napi_value async_resource_name;
    status = napi_create_string_utf8(env, "rbus_event_callback", NAPI_AUTO_LENGTH, &async_resource_name);
    if (status != napi_ok) {
+      sub->in_use = false;
       if (sub->user_data_ref) {
          napi_delete_reference(env, sub->user_data_ref);
       }
       napi_delete_reference(env, sub->callback_ref);
-      free(sub->name);
-      free(sub->callback_key);
-      free(sub);
+      sub->name[0] = '\0';
+      sub->callback_key[0] = '\0';
+      pthread_mutex_unlock(&subscriptions_mutex);
       throw_error(env, "Failed to create async resource name", 0, status);
       return NULL;
    }
@@ -988,35 +915,33 @@ static napi_value rbus_subscribe_event(napi_env env, napi_callback_info info) {
       &sub->tsfn
    );
    if (status != napi_ok) {
+      sub->in_use = false;
       if (sub->user_data_ref) {
          napi_delete_reference(env, sub->user_data_ref);
       }
       napi_delete_reference(env, sub->callback_ref);
-      free(sub->name);
-      free(sub->callback_key);
-      free(sub);
+      sub->name[0] = '\0';
+      sub->callback_key[0] = '\0';
+      pthread_mutex_unlock(&subscriptions_mutex);
       throw_error(env, "Failed to create thread-safe function", 0, status);
       return NULL;
    }
 
    rbusError_t err = rbusEvent_Subscribe(handle, sub->name, event_handler, sub, timeout);
    if (err != RBUS_ERROR_SUCCESS) {
+      sub->in_use = false;
       napi_release_threadsafe_function(sub->tsfn, napi_tsfn_release);
       if (sub->user_data_ref) {
          napi_delete_reference(env, sub->user_data_ref);
       }
       napi_delete_reference(env, sub->callback_ref);
-      free(sub->name);
-      free(sub->callback_key);
-      free(sub);
+      sub->name[0] = '\0';
+      sub->callback_key[0] = '\0';
+      pthread_mutex_unlock(&subscriptions_mutex);
       throw_error(env, "rbusEvent_Subscribe failed", err, napi_ok);
       return NULL;
    }
 
-   // Add to linked list
-   pthread_mutex_lock(&subscriptions_mutex);
-   sub->next = subscriptions_head;
-   subscriptions_head = sub;
    subscription_count++;
    pthread_mutex_unlock(&subscriptions_mutex);
 
@@ -1025,7 +950,6 @@ static napi_value rbus_subscribe_event(napi_env env, napi_callback_info info) {
    return result;
 }
 
-// Binding for rbus_get
 static napi_value rbus_get_value(napi_env env, napi_callback_info info) {
    size_t argc = 1;
    napi_value args[1];
@@ -1043,38 +967,23 @@ static napi_value rbus_get_value(napi_env env, napi_callback_info info) {
       return NULL;
    }
 
-   size_t prop_len_bytes;
-   status = napi_get_value_string_utf8(env, args[0], NULL, 0, &prop_len_bytes);
-   if (status != napi_ok) {
-      throw_error(env, "Failed to get propertyName length", 0, status);
-      return NULL;
-   }
-   char *propertyName = (char *)malloc(prop_len_bytes + 1);
-   if (!propertyName) {
-      throw_error(env, "Failed to allocate memory for propertyName", 0, napi_ok);
-      return NULL;
-   }
-   status = napi_get_value_string_utf8(env, args[0], propertyName, prop_len_bytes + 1, NULL);
-   if (status != napi_ok) {
-      free(propertyName);
-      throw_error(env, "Failed to get propertyName string", 0, status);
+   char propertyName[PROPERTY_NAME_MAX_LEN];
+   size_t prop_len;
+   status = napi_get_value_string_utf8(env, args[0], propertyName, PROPERTY_NAME_MAX_LEN, &prop_len);
+   if (status != napi_ok || prop_len >= PROPERTY_NAME_MAX_LEN) {
+      throw_error(env, prop_len >= PROPERTY_NAME_MAX_LEN ? "propertyName too long" : "Failed to get propertyName string", 0, status);
       return NULL;
    }
 
    rbusHandle_t handle = get_rbus_handle(env, exports);
    if (!handle) {
-      free(propertyName);
       return NULL;
    }
 
    rbusValue_t value;
    rbusError_t err = rbus_get(handle, propertyName, &value);
-   free(propertyName);
-
    if (err != RBUS_ERROR_SUCCESS) {
-      char error_msg[RBUS_TEMP_ERROR_MSG_LEN];
-      snprintf(error_msg, sizeof(error_msg), "rbus_get failed: rbus error %d", err);
-      napi_throw_error(env, NULL, error_msg);
+      throw_error(env, "rbus_get failed", err, napi_ok);
       return NULL;
    }
 
@@ -1100,45 +1009,28 @@ static napi_value rbus_unsubscribe_event(napi_env env, napi_callback_info info) 
       return NULL;
    }
 
-   size_t event_len_bytes;
-   status = napi_get_value_string_utf8(env, args[0], NULL, 0, &event_len_bytes);
-   if (status != napi_ok) {
-      throw_error(env, "Failed to get eventName length", 0, status);
-      return NULL;
-   }
-   char *event_name = (char *)malloc(event_len_bytes + 1);
-   if (!event_name) {
-      throw_error(env, "Failed to allocate memory for eventName", 0, napi_ok);
-      return NULL;
-   }
-   status = napi_get_value_string_utf8(env, args[0], event_name, event_len_bytes + 1, NULL);
-   if (status != napi_ok) {
-      free(event_name);
-      throw_error(env, "Failed to get eventName string", 0, status);
+   char event_name[EVENT_NAME_MAX_LEN];
+   size_t event_len;
+   status = napi_get_value_string_utf8(env, args[0], event_name, EVENT_NAME_MAX_LEN, &event_len);
+   if (status != napi_ok || event_len >= EVENT_NAME_MAX_LEN) {
+      throw_error(env, event_len >= EVENT_NAME_MAX_LEN ? "eventName too long" : "Failed to get eventName string", 0, status);
       return NULL;
    }
 
    rbusHandle_t handle = get_rbus_handle(env, exports);
    if (!handle) {
-      free(event_name);
       return NULL;
    }
 
    pthread_mutex_lock(&subscriptions_mutex);
-   SubscriptionData **current = &subscriptions_head;
    SubscriptionData *sub = NULL;
-   while (*current) {
-      if ((*current)->in_use && strcmp((*current)->name, event_name) == 0) {
-         sub = *current;
-         *current = sub->next;
-         subscription_count--;
+   for (int i = 0; i < MAX_SUBSCRIPTIONS; ++i) {
+      if (subscriptions[i].in_use && strcmp(subscriptions[i].name, event_name) == 0) {
+         sub = &subscriptions[i];
          break;
       }
-      current = &(*current)->next;
    }
    pthread_mutex_unlock(&subscriptions_mutex);
-
-   free(event_name);
 
    if (!sub) {
       throw_error(env, "No subscription found for eventName", 0, napi_ok);
@@ -1147,17 +1039,10 @@ static napi_value rbus_unsubscribe_event(napi_env env, napi_callback_info info) 
 
    rbusError_t err = rbusEvent_Unsubscribe(handle, sub->name);
    if (err != RBUS_ERROR_SUCCESS) {
-      // Re-add to list if unsubscribe fails to avoid leak
-      pthread_mutex_lock(&subscriptions_mutex);
-      sub->next = subscriptions_head;
-      subscriptions_head = sub;
-      subscription_count++;
-      pthread_mutex_unlock(&subscriptions_mutex);
       throw_error(env, "rbusEvent_Unsubscribe failed", err, napi_ok);
       return NULL;
    }
 
-   // Release TSFN, letting tsfn_finalize handle cleanup
    napi_release_threadsafe_function(sub->tsfn, napi_tsfn_release);
 
    napi_value result;
@@ -1167,16 +1052,24 @@ static napi_value rbus_unsubscribe_event(napi_env env, napi_callback_info info) 
 
 static void module_cleanup(void *arg) {
    pthread_mutex_lock(&subscriptions_mutex);
-   SubscriptionData *current = subscriptions_head;
-   while (current) {
-      SubscriptionData *next = current->next;
-      if (current->in_use) {
-         napi_release_threadsafe_function(current->tsfn, napi_tsfn_release);
-         // Cleanup is handled by tsfn_finalize
+   for (int i = 0; i < MAX_SUBSCRIPTIONS; ++i) {
+      if (subscriptions[i].in_use) {
+         napi_release_threadsafe_function(subscriptions[i].tsfn, napi_tsfn_release);
       }
-      current = next;
    }
-   subscriptions_head = NULL;
+   for (int i = 0; i < MAX_TSFN_DATA; ++i) {
+      if (tsfn_data_pool[i].in_use) {
+         for (int j = 0; j < tsfn_data_pool[i].property_count; j++) {
+            if (tsfn_data_pool[i].properties[j].value) {
+               rbusValue_Release(tsfn_data_pool[i].properties[j].value);
+            }
+            tsfn_data_pool[i].properties[j].key[0] = '\0';
+         }
+         tsfn_data_pool[i].event_name[0] = '\0';
+         tsfn_data_pool[i].property_count = 0;
+         tsfn_data_pool[i].in_use = false;
+      }
+   }
    subscription_count = 0;
    pthread_mutex_unlock(&subscriptions_mutex);
    pthread_mutex_destroy(&subscriptions_mutex);
@@ -1184,18 +1077,23 @@ static void module_cleanup(void *arg) {
 
 static napi_value init(napi_env env, napi_value exports) {
    pthread_mutex_init(&subscriptions_mutex, NULL);
-   subscriptions_head = NULL;
+   for (int i = 0; i < MAX_SUBSCRIPTIONS; ++i) {
+      subscriptions[i].in_use = false;
+   }
+   for (int i = 0; i < MAX_TSFN_DATA; ++i) {
+      tsfn_data_pool[i].in_use = false;
+   }
    subscription_count = 0;
 
    napi_add_env_cleanup_hook(env, module_cleanup, env);
 
    napi_property_descriptor desc[] = {
-       { "rbusOpenHandle", NULL, rbus_open_handle, NULL, NULL, NULL, napi_default, NULL },
-       { "rbusCloseHandle", NULL, rbus_close_handle, NULL, NULL, NULL, napi_default, NULL },
-       { "setValue", NULL, rbus_set_value, NULL, NULL, NULL, napi_default, NULL },
-       { "getValue", NULL, rbus_get_value, NULL, NULL, NULL, napi_default, NULL },
-       { "subscribe", NULL, rbus_subscribe_event, NULL, NULL, NULL, napi_default, NULL },
-       { "unsubscribe", NULL, rbus_unsubscribe_event, NULL, NULL, NULL, napi_default, NULL }
+       {"rbusOpenHandle", NULL, rbus_open_handle, NULL, NULL, NULL, napi_default, NULL},
+       {"rbusCloseHandle", NULL, rbus_close_handle, NULL, NULL, NULL, napi_default, NULL},
+       {"setValue", NULL, rbus_set_value, NULL, NULL, NULL, napi_default, NULL},
+       {"getValue", NULL, rbus_get_value, NULL, NULL, NULL, napi_default, NULL},
+       {"subscribe", NULL, rbus_subscribe_event, NULL, NULL, NULL, napi_default, NULL},
+       {"unsubscribe", NULL, rbus_unsubscribe_event, NULL, NULL, NULL, napi_default, NULL}
    };
    napi_status status = napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
    if (status != napi_ok) {

@@ -11,8 +11,8 @@
             ],
             "libraries": ["-L/usr/lib -L/usr/local/lib -L/opt/homebrew/lib -lrbus"],
             "dependencies": ["<!(node -p \"require('node-addon-api').gyp\")"],
-            "cflags": ["-g", "-O0"],
-            "cflags_cc": ["-g", "-O0"],
+            "cflags": ["-g", "-O0", "-Wno-stringop-truncation"],
+            "cflags_cc": ["-g", "-O0", "-Wno-stringop-truncation"],
             "xcode_settings": {
                 "OTHER_CFLAGS": ["-g", "-O0"],
                 "OTHER_CPLUSPLUSFLAGS": ["-g", "-O0"],
