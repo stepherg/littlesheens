@@ -1,13 +1,16 @@
 {
-  "name": "node-automations",
-  "version": "0.0.1",
-  "scripts": {
-    "start": "./nodemodify.sh; ./build_specs.sh; node --trace-uncaught index.js",
-    "convert": "./build_specs.sh"
-  },
-
-  "dependencies": {
-    "littlesheens": "file:node-littlesheens",
-    "safe-eval": "^0.4.1"
-  }
+   "name": "node-automations",
+   "version": "0.0.1",
+   "scripts": {
+      "preinstall": "./src/nodemodify.sh && ./src/build_specs.sh",
+      "start": "./src/nodemodify.sh; ./src/build_specs.sh; node --trace-uncaught index.js",
+      "convert": "./src/build_specs.sh",
+      "build": "./src/nodemodify.sh && node-gyp rebuild && cd node-littlesheens && npm install",
+      "install": "./src/nodemodify.sh && node-gyp rebuild && cd node-littlesheens && npm install"
+   },
+   "dependencies": {
+      "littlesheens": "file:node-littlesheens",
+      "safe-eval": "^0.4.1",
+      "node-addon-api": "~5.0.0"
+   }
 }
