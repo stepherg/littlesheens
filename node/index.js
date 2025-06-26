@@ -10,6 +10,14 @@ if (SHEENS) {
    Times = SHEENS.times;
 }
 
+var rbus = null;
+try {
+   var rbus = require('./rbus');
+} catch (e) {}
+
+const WebSocket = require('ws');
+const ws = new WebSocket('ws://localhost:8080');
+
 Times.enable();
 
 var Cfg = {
@@ -44,18 +52,6 @@ function GetSpec(filename, id) {
    var spec = fs.readFileSync(filename, 'utf8');
    spec = spec.replaceAll('${id}', id);
    return JSON.parse(spec);
-}
-
-function process_t2_parameters(params) {
-   var results = {}
-   for (var i = 0; i < params.length; i++) {
-      //console.log("Processing ", params[i]);
-      if (params[i].name)
-         results[params[i].name] = rbus_getValue(params[i].reference);
-      else
-         results[params[i].reference] = rbus_getValue(params[i].reference);
-   }
-   return results;
 }
 
 //
@@ -227,6 +223,8 @@ function CrewUpdate(crew_js, steppeds_js) {
 function process_event(crew, ev) {
    var ev= JSON.stringify(ev);
 
+   console.log("Processing: ", ev);
+
    // process
    var steppeds = CrewProcess(crew, ev);
    var result = {};
@@ -242,7 +240,11 @@ function process_event(crew, ev) {
             var action = emit.actions[j];
             console.log(action);
             if(action.hasOwnProperty("jsonrpc")) {
-               console.log(process_jrpc(action));
+               //console.log(process_jrpc(action));
+               //jrpc_response = process_jrpc(action);
+               ws.send(JSON.stringify(action));
+               //console.log(jrpc_response);
+               //setTimeout(Cfg.action_callback, 0, jrpc_response, [jrpc_response.id]);
             }
          }
       }
@@ -284,19 +286,59 @@ crew.machines[id] = {spec: "specs/t2example.js", node: "stop", bs: {_id: id, tim
 var crew_js = JSON.stringify(crew);
 console.log(crew_js);
 
-crew_js = process_event(crew_js, {event: 'start'});
+ws.on('open', () => {
+   crew_js = process_event(crew_js, {event: 'start'});
 
-// Clear all tasks after 60seconds
-setTimeout(function () {
-   console.log('shutting down crews');
-   crew_js = process_event(crew_js, {event: 'stop'});
+   // Clear all tasks after 60seconds
+   setTimeout(function () {
+      console.log('shutting down crews');
+      crew_js = process_event(crew_js, {event: 'stop'});
 
-   timers = Cfg.timers;
-   for (var i = 0; i < timers.length; i++) {
-      clearInterval(timers[i]);
+      timers = Cfg.timers;
+      for (var i = 0; i < timers.length; i++) {
+         clearInterval(timers[i]);
+      }
+
+      console.log();
+      console.log();
+      console.log("Performance summary: ", Times.summary());
+      // TODO: need to unsubscribe
+      ws.close();
+   }, 60000);
+});
+
+ws.on('message', (data) => {
+   try {
+      const response = JSON.parse(data);
+      console.log('Received response:');
+      console.log(JSON.stringify(response, null, 2));
+
+      // Handle notifications (no id)
+      if (!response.id && response.method === 'rbus_event') {
+         console.log(`Event received: ${response.result.eventName} (${response.result.type}): ${JSON.stringify(response.result.data)}`);
+         var ev= {event: response.params.data};
+         crew_js = process_event(crew_js, ev);
+         return;
+      } else if (response.id && response.result){
+         var ev= {to: response.id, event: response.result};
+         crew_js = process_event(crew_js, ev);
+         return;
+      }
+
+      if (response.error) {
+         console.error(`failed: ${response.error.message}`);
+      }
+
+   } catch (error) {
+      console.error('Error parsing response:', error.message);
+      ws.close();
    }
+});
 
-   console.log();
-   console.log();
-   console.log("Performance summary: ", Times.summary());
-}, 60000);
+ws.on('error', (error) => {
+   console.error('WebSocket error:', error.message);
+});
+
+ws.on('close', () => {
+   console.log('WebSocket connection closed');
+});

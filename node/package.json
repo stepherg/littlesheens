@@ -9,8 +9,10 @@
       "install": "./src/nodemodify.sh && node-gyp rebuild && cd node-littlesheens && npm install"
    },
    "dependencies": {
+      "json-rpc-2.0": "^1.7.0",
       "littlesheens": "file:node-littlesheens",
+      "node-addon-api": "~5.0.0",
       "safe-eval": "^0.4.1",
-      "node-addon-api": "~5.0.0"
+      "ws": "^8.18.2"
    }
 }

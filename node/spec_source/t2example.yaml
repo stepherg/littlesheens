@@ -59,7 +59,7 @@ nodes:
           // submit the work
           actions.push({
             "jsonrpc": "2.0",
-            "method": "process_t2_parameters",
+            "method": "retrieve_t2_parameters",
             "id": id,
             "params": {
               "Parameters": params
