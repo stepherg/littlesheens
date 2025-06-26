@@ -55,58 +55,6 @@ function GetSpec(filename, id) {
 }
 
 //
-// Invoke single JRPC
-// 
-function _process_jrpc(call) {
-   var method = call["method"]; 
-   var params = call["params"];
-   var result = {}
-   try {
-      fn = eval(method);
-
-      if (typeof fn === "function") {
-         if (Array.isArray(params) == true){
-            var f_result = fn.apply(null,params);
-            result = {"jsonrpc": call["jsonrpc"], "result": f_result, "id": call["id"]};
-         } else if (typeof params  ===  "object") {
-            var param_arr = Object.values(params);
-            var f_result = fn.apply(null,param_arr);
-            result = {"jsonrpc": call["jsonrpc"], "result": f_result, "id": call["id"]};
-            //result={"jsonrpc": "2.0", "error": {"code": -32602, "message": "Invalid params"}, "id": call["id"]}
-         }
-      } else {
-         result = {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
-      }
-   } catch(e){
-      if (e.name === "ReferenceError" || e.name === "TypeError") { //IE7 uses TypeError instead
-         result={"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": call["id"]}
-      }
-   }
-   return result;
-}
-
-//
-// Determine if batch [] or single
-//
-function process_jrpc(calls) {
-   var results = [];
-   if (Array.isArray(calls) == true){
-      if (calls.length != 0) {
-         calls.forEach(function(call) {
-            results.push(_process_jrpc(call));
-         });
-      } else {
-         results = {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
-      }
-   } else {
-      results = _process_jrpc(calls);
-   }
-   
-   return results;
-}
-
-
-//
 // CrewProcess
 //
 function CrewProcess(crew_js, message_js) {
