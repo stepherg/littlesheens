@@ -13,44 +13,52 @@ add_definitions(-DPLUGIN_FOLDER="${PLUGIN_FOLDER}")
 add_definitions(-DPLUGIN_SEARCH_PATHS=".,../,/usr/lib")
 
 if (APPLE)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOSX -Wno-unused-but-set-variable")
-  # Adding debug flags to MAC builds by default
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer -fno-inline -O0 -g3 -ggdb3")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOSX -Wno-typedef-redefinition -Wno-unused-but-set-variable")
+    # Adding debug flags to MAC builds by default
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer -fno-inline -O0 -g3 -ggdb3")
 endif()
 
 find_program(YAML2JSON yaml2json)
-if(YAML2JSON)
-  message(STATUS "Found yaml2json at: ${YAML2JSON}")
-else()
-  message(FATAL_ERROR "yaml2json is required but not found.")
+if(NOT YAML2JSON)
+    message(FATAL_ERROR "yaml2json not found, run:\ngo install github.com/bronze1man/yaml2json@latest")
 endif()
 
 find_program(MINIFY minify)
-if(MINIFY)
-  message(STATUS "Found minify at: ${MINIFY}")
-else()
-  message(FATAL_ERROR "minify is required but not found.")
+if(NOT MINIFY)
+    message(FATAL_ERROR "minify not found, run:\ngo install github.com/tdewolff/minify/cmd/minify@latest")
 endif()
 
 find_package(CURL)
 if(NOT CURL_FOUND)
-  message(FATAL_ERROR "libcurl is required but not found.")
+    message(FATAL_ERROR "libcurl is required but not found.")
 endif()
 
 find_library(YAML_LIBRARY NAMES yaml libyaml)
 find_path(YAML_INCLUDE_DIR yaml.h)
 if (NOT YAML_LIBRARY OR NOT YAML_INCLUDE_DIR)
-    message(FATAL_ERROR "libyaml-dev not found.")
+    if (APPLE)
+        message(FATAL_ERROR "libyaml not found, run:\nbrew install libyaml")
+    else()
+        message(FATAL_ERROR "libyaml not found, run:\napt-get install libyaml-dev")
+    endif()
 endif()
 
-find_library(RBUS_LIBRARY NAMES rbus HINTS "/usr/lib")
-find_path(RBUS_INCLUDE_DIR NAMES rbus.h HINTS "/usr/include/rbus")
-find_path(RTMSG_INCLUDE_DIR NAMES rtMessage.h HINTS "/usr/include/rtmessage")
+find_library(RBUS_LIBRARY NAMES rbus)
+find_library(RBUS_CORE_LIBRARY NAMES rbuscore)
+find_path(RBUS_INCLUDE_DIR NAMES rbus.h PATH_SUFFIXES rbus)
+find_path(RTMSG_INCLUDE_DIR NAMES rtMessage.h PATH_SUFFIXES rtmessage)
+if(NOT RBUS_LIBRARY OR NOT RBUS_CORE_LIBRARY OR NOT RBUS_INCLUDE_DIR OR NOT RBUS_INCLUDE_DIR)
+    if (APPLE)
+        message(FATAL_ERROR "rbus not found, run:\nbrew tap stepherg/tap\nbrew install rbus")
+    else()
+        message(FATAL_ERROR "rbus not found")
+    endif()
+endif()
 
-
-find_library(JANSSON_LIBRARY NAMES jansson)
-if(NOT JANSSON_LIBRARY)
-    message(FATAL_ERROR "jansson library not found")
+find_library(CJSON_LIBRARY NAMES cjson)
+find_path(CJSON_INCLUDE_DIR NAMES cJSON.h PATH_SUFFIXES cjson)
+if(NOT CJSON_LIBRARY OR NOT CJSON_INCLUDE_DIR)
+   message(FATAL_ERROR "cjson library not found")
 endif()
 
 # Duktape configuration
@@ -78,16 +86,18 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${DUKVERSION}")
     execute_process(COMMAND tar xf "${CMAKE_BINARY_DIR}/${DUKVERSION}.tar.xz" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
-file(GLOB DUK_FILES "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src-separate/*.c")
+if (BUILD_DUKTAPE_SRC)
+    file(GLOB DUK_FILES "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src-separate/*.c")
+else()
+    file(GLOB DUK_FILES "${CMAKE_SOURCE_DIR}/${DUKVERSION}/src/*.c")
+endif()
 
 # libduktape shared library
 add_library(duktape SHARED 
-    ${DUK_SRC}/duktape.c 
-    # ${DUK_FILES}
+    ${DUK_FILES}
     ${DUK_EXTRAS}/print-alert/duk_print_alert.c
     ${DUK_EXTRAS}/module-duktape/duk_module_duktape.c
     ${DUK_EXTRAS}/module-node/duk_module_node.c
-    # ${DUK_EXTRAS}/console/duk_console.c
 )
 target_include_directories(duktape PRIVATE ${DUK_SRC} ${DUK_EXTRAS})
 target_link_libraries(duktape PRIVATE m)
@@ -96,11 +106,12 @@ target_link_libraries(duktape PRIVATE m)
 add_library(machines SHARED
    ${SHEENS_SRC}/machines.c 
    ${SHEENS_SRC}/duk_console.c 
+   ${SHEENS_SRC}/rbus_duktape.c
    machines_js.c
 )
 
-target_include_directories(machines PRIVATE ${DUK_SRC} ${DUK_EXTRAS}/print-alert ${DUK_EXTRAS}/module-duktape ${DUK_EXTRAS}/module-node ${DUK_EXTRAS}/console)
-target_link_libraries(machines PRIVATE duktape)
+target_include_directories(machines PRIVATE ${DUK_SRC} ${DUK_EXTRAS}/print-alert ${DUK_EXTRAS}/module-duktape ${DUK_EXTRAS}/module-node ${DUK_EXTRAS}/console ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
+target_link_libraries(machines PRIVATE duktape ${RBUS_LIBRARY} ${RBUS_CORE_LIBRARY})
 
 file(GLOB JS_FILES "${JS_DIR}/*.js")
 file(GLOB LIB_JS_FILES "${LIB_DIR}/*.js")
@@ -174,28 +185,13 @@ add_executable(driver ${SHEENS_SRC}/driver.c ${SHEENS_SRC}/util.c)
 target_include_directories(driver PRIVATE ${DUK_SRC})
 target_link_libraries(driver PRIVATE machines duktape)
 
-if (NOT RBUS_LIBRARY OR NOT RBUS_INCLUDE_DIR OR NOT RTMSG_INCLUDE_DIR)
-    message(WARNING "RBUS not found... building stubs")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-typedef-redefinition")
-    set(RBUS_INCLUDE_DIR "${LIB_DIR}/rbus/include")
-    set(RTMSG_INCLUDE_DIR "${LIB_DIR}/rbus/include")
-    file(GLOB RBUS_SRCS "${LIB_DIR}/rbus/*.c")
-    add_library(rbus SHARED ${RBUS_SRCS})
-    target_include_directories(rbus PRIVATE ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
-    set(RBUS_LIBRARY rbus)
-endif()
-
-#add_executable(rbus_tr181 rbus_tr181.c)
-#target_include_directories(rbus_tr181 PRIVATE ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
-#target_link_libraries(rbus_tr181 PRIVATE ${RBUS_LIBRARY} ${JANSSON_LIBRARY})
-
 # Dynamic libraries from lib directory
 file(GLOB LIB_SRCS "${LIB_DIR}/*.c")
 foreach(src ${LIB_SRCS})
     get_filename_component(filename ${src} NAME_WE)
     add_library(${filename} SHARED ${src})
     target_include_directories(${filename} PRIVATE ${SHEENS_SRC} ${DUK_SRC} ${YAML_INCLUDE_DIR} ${RBUS_INCLUDE_DIR} ${RTMSG_INCLUDE_DIR})
-    target_link_libraries(${filename} PRIVATE duktape curl ${YAML_LIBRARY} ${RBUS_LIBRARY} ${JANSSON_LIBRARY})
+    target_link_libraries(${filename} PRIVATE duktape curl ${YAML_LIBRARY} ${RBUS_LIBRARY} ${RBUS_CORE_LIBRARY})
     set_target_properties(${filename} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${OUT_DIR})
 endforeach()
 
