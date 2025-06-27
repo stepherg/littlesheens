@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <uuid/uuid.h>
 
 // --- Constants ---
 #define RBUS_TEMP_ERROR_MSG_LEN 256
@@ -14,10 +15,12 @@
 #define MAX_PROPERTIES 10
 #define MAX_SUBSCRIPTIONS 50
 #define MAX_TSFN_DATA MAX_SUBSCRIPTIONS
+#define METHOD_NAME_MAX_LEN 256
 
 // --- Global Mutexes ---
 static pthread_mutex_t subscriptions_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t tsfn_data_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t method_tsfn_data_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Structure to store subscription data
 typedef struct SubscriptionData {
@@ -36,7 +39,7 @@ typedef struct {
    rbusValue_t value; // Stores any RBus value type
 } PropertyData;
 
-// Thread-safe function callback data
+// Thread-safe function callback data for events
 typedef struct {
    char event_name[EVENT_NAME_MAX_LEN];
    rbusEventType_t event_type;
@@ -47,9 +50,24 @@ typedef struct {
    bool in_use;
 } ThreadSafeData;
 
+// Structure for method async callback data
+typedef struct {
+   char method_name[METHOD_NAME_MAX_LEN];
+   rbusHandle_t handle;
+   rbusError_t error;
+   PropertyData properties[MAX_PROPERTIES];
+   int property_count;
+   napi_ref callback_ref;
+   napi_ref user_data_ref;
+   napi_threadsafe_function tsfn;
+   bool in_use;
+   char uuid[37];
+} MethodThreadSafeData;
+
 // Global arrays
 static SubscriptionData subscriptions[MAX_SUBSCRIPTIONS];
 static ThreadSafeData tsfn_data_pool[MAX_TSFN_DATA];
+static MethodThreadSafeData method_tsfn_data_pool[MAX_TSFN_DATA];
 static int subscription_count = 0;
 
 static const char *event_type_to_string(rbusEventType_t type) {
@@ -69,7 +87,7 @@ static const char *event_type_to_string(rbusEventType_t type) {
 static void throw_error(napi_env env, const char *msg, rbusError_t err, napi_status status) {
    char error_msg[RBUS_TEMP_ERROR_MSG_LEN];
    if (err != 0) {
-      snprintf(error_msg, sizeof(error_msg), "%s: rbus error %d", msg, err);
+      snprintf(error_msg, sizeof(error_msg), "%s: rbus error %d (%s)", msg, err, rbusError_ToString(err));
    } else if (status != napi_ok) {
       snprintf(error_msg, sizeof(error_msg), "%s: N-API error %d", msg, status);
    } else {
@@ -93,6 +111,119 @@ static rbusHandle_t get_rbus_handle(napi_env env, napi_value exports) {
       return NULL;
    }
    return (rbusHandle_t)handle;
+}
+
+// Helper to convert JavaScript object to rbusObject_t
+static rbusObject_t convert_js_object_to_rbus(napi_env env, napi_value js_obj) {
+   napi_status status;
+   napi_value keys;
+   uint32_t key_count;
+
+   status = napi_get_property_names(env, js_obj, &keys);
+   if (status != napi_ok) {
+      throw_error(env, "Failed to get property names from JavaScript object", 0, status);
+      return NULL;
+   }
+
+   status = napi_get_array_length(env, keys, &key_count);
+   if (status != napi_ok) {
+      throw_error(env, "Failed to get key count from JavaScript object", 0, status);
+      return NULL;
+   }
+
+   rbusObject_t rbus_obj;
+   rbusObject_Init(&rbus_obj, NULL);
+
+   for (uint32_t i = 0; i < key_count; i++) {
+      napi_value key;
+      status = napi_get_element(env, keys, i, &key);
+      if (status != napi_ok) {
+         rbusObject_Release(rbus_obj);
+         throw_error(env, "Failed to get key from JavaScript object", 0, status);
+         return NULL;
+      }
+
+      char key_str[PROPERTY_NAME_MAX_LEN];
+      size_t key_len;
+      status = napi_get_value_string_utf8(env, key, key_str, PROPERTY_NAME_MAX_LEN, &key_len);
+      if (status != napi_ok || key_len >= PROPERTY_NAME_MAX_LEN) {
+         rbusObject_Release(rbus_obj);
+         throw_error(env, key_len >= PROPERTY_NAME_MAX_LEN ? "Property key too long" : "Failed to get key string", 0, status);
+         return NULL;
+      }
+
+      napi_value value;
+      status = napi_get_property(env, js_obj, key, &value);
+      if (status != napi_ok) {
+         rbusObject_Release(rbus_obj);
+         throw_error(env, "Failed to get value from JavaScript object", 0, status);
+         return NULL;
+      }
+
+      napi_valuetype value_type;
+      status = napi_typeof(env, value, &value_type);
+      if (status != napi_ok) {
+         rbusObject_Release(rbus_obj);
+         throw_error(env, "Failed to get value type", 0, status);
+         return NULL;
+      }
+
+      rbusValue_t rbus_val;
+      rbusValue_Init(&rbus_val);
+
+      switch (value_type) {
+      case napi_boolean: {
+         bool bool_val;
+         napi_get_value_bool(env, value, &bool_val);
+         rbusValue_SetBoolean(rbus_val, bool_val);
+         break;
+      }
+      case napi_number: {
+         double double_val;
+         napi_get_value_double(env, value, &double_val);
+         if (double_val == (int32_t)double_val) {
+            rbusValue_SetInt32(rbus_val, (int32_t)double_val);
+         } else {
+            rbusValue_SetDouble(rbus_val, double_val);
+         }
+         break;
+      }
+      case napi_string: {
+         char str_val[VALUE_MAX_LEN];
+         size_t str_len;
+         status = napi_get_value_string_utf8(env, value, str_val, VALUE_MAX_LEN, &str_len);
+         if (status != napi_ok || str_len >= VALUE_MAX_LEN) {
+            rbusValue_Release(rbus_val);
+            rbusObject_Release(rbus_obj);
+            throw_error(env, str_len >= VALUE_MAX_LEN ? "String value too long" : "Failed to get string value", 0, status);
+            return NULL;
+         }
+         rbusValue_SetString(rbus_val, str_val);
+         break;
+      }
+      case napi_object: {
+         rbusObject_t nested_obj = convert_js_object_to_rbus(env, value);
+         if (!nested_obj) {
+            rbusValue_Release(rbus_val);
+            rbusObject_Release(rbus_obj);
+            return NULL;
+         }
+         rbusValue_SetObject(rbus_val, nested_obj);
+         rbusObject_Release(nested_obj);
+         break;
+      }
+      default:
+         rbusValue_Release(rbus_val);
+         rbusObject_Release(rbus_obj);
+         throw_error(env, "Unsupported JavaScript value type for conversion to rbus", 0, napi_ok);
+         return NULL;
+      }
+
+      rbusObject_SetValue(rbus_obj, key_str, rbus_val);
+      rbusValue_Release(rbus_val);
+   }
+
+   return rbus_obj;
 }
 
 // Helper to convert rbus value to JavaScript
@@ -287,6 +418,31 @@ static void tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint
    }
 }
 
+static void method_tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint) {
+   MethodThreadSafeData *data = (MethodThreadSafeData *)finalize_data;
+   if (data) {
+      pthread_mutex_lock(&method_tsfn_data_mutex);
+      if (data->in_use) {
+         if (data->callback_ref) {
+            napi_delete_reference(env, data->callback_ref);
+         }
+         if (data->user_data_ref) {
+            napi_delete_reference(env, data->user_data_ref);
+         }
+         for (int i = 0; i < data->property_count; i++) {
+            if (data->properties[i].value) {
+               rbusValue_Release(data->properties[i].value);
+               data->properties[i].value = NULL;
+            }
+            data->properties[i].key[0] = '\0';
+         }
+         data->method_name[0] = '\0';
+         data->in_use = false;
+      }
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+   }
+}
+
 static void tsfn_call(napi_env env, napi_value js_callback, void *context, void *data) {
    ThreadSafeData *ts_data = (ThreadSafeData *)data;
    SubscriptionData *sub = ts_data->sub;
@@ -474,6 +630,273 @@ cleanup:
    napi_close_handle_scope(env, scope);
 }
 
+static void method_tsfn_call(napi_env env, napi_value js_callback, void *context, void *data) {
+   MethodThreadSafeData *method_data = (MethodThreadSafeData *)data;
+
+   if (!method_data) {
+      fprintf(stderr, "Error: Null method_data in method_tsfn_call\n");
+      return;
+   }
+
+   napi_handle_scope scope;
+   napi_status status = napi_open_handle_scope(env, &scope);
+   if (status != napi_ok) {
+      fprintf(stderr, "N-API Error: Failed to open handle scope in method_tsfn_call (%d)\n", status);
+      goto cleanup;
+   }
+
+   napi_value callback;
+   status = napi_get_reference_value(env, method_data->callback_ref, &callback);
+   if (status != napi_ok || !callback) {
+      fprintf(stderr, "N-API Error: Failed to get callback reference (%d)\n", status);
+      napi_close_handle_scope(env, scope);
+      goto cleanup;
+   }
+
+   napi_valuetype callback_type;
+   status = napi_typeof(env, callback, &callback_type);
+   if (status != napi_ok || callback_type != napi_function) {
+      fprintf(stderr, "N-API Error: Callback is not a function (%d)\n", status);
+      napi_close_handle_scope(env, scope);
+      goto cleanup;
+   }
+
+   napi_value result_obj;
+   status = napi_create_object(env, &result_obj);
+   if (status != napi_ok) {
+      fprintf(stderr, "N-API Error: Failed to create result object (%d)\n", status);
+      napi_close_handle_scope(env, scope);
+      goto cleanup;
+   }
+
+   napi_value error_val;
+   if (method_data->error != RBUS_ERROR_SUCCESS) {
+      char error_msg[RBUS_TEMP_ERROR_MSG_LEN];
+      snprintf(error_msg, sizeof(error_msg), "%s", rbusError_ToString(method_data->error));
+      status = napi_create_string_utf8(env, error_msg, NAPI_AUTO_LENGTH, &error_val);
+      if (status != napi_ok) {
+         fprintf(stderr, "N-API Error: Failed to create error string (%d)\n", status);
+         napi_close_handle_scope(env, scope);
+         goto cleanup;
+      }
+   } else {
+      status = napi_get_null(env, &error_val);
+      if (status != napi_ok) {
+         fprintf(stderr, "N-API Error: Failed to create null error (%d)\n", status);
+         napi_close_handle_scope(env, scope);
+         goto cleanup;
+      }
+   }
+   status = napi_set_named_property(env, result_obj, "error", error_val);
+   if (status != napi_ok) {
+      fprintf(stderr, "N-API Error: Failed to set error property (%d)\n", status);
+      napi_close_handle_scope(env, scope);
+      goto cleanup;
+   }
+
+   napi_value method_name_val;
+   status = napi_create_string_utf8(env, method_data->method_name, NAPI_AUTO_LENGTH, &method_name_val);
+   if (status != napi_ok) {
+      fprintf(stderr, "N-API Error: Failed to create method name string (%d)\n", status);
+      napi_close_handle_scope(env, scope);
+      goto cleanup;
+   }
+   status = napi_set_named_property(env, result_obj, "methodName", method_name_val);
+   if (status != napi_ok) {
+      fprintf(stderr, "N-API Error: Failed to set methodName property (%d)\n", status);
+      napi_close_handle_scope(env, scope);
+      goto cleanup;
+   }
+
+   if (method_data->property_count > 0) {
+      napi_value data_obj;
+      status = napi_create_object(env, &data_obj);
+      if (status != napi_ok) {
+         fprintf(stderr, "N-API Error: Failed to create data object (%d)\n", status);
+         napi_close_handle_scope(env, scope);
+         goto cleanup;
+      }
+
+      for (int i = 0; i < method_data->property_count; i++) {
+         PropertyData *prop = &method_data->properties[i];
+         if (prop->key[0] && prop->value) {
+            napi_value prop_val = convert_rbus_value_to_js(env, prop->value);
+            if (!prop_val) {
+               fprintf(stderr, "N-API Error: Failed to convert property value for key '%s'\n", prop->key);
+               napi_close_handle_scope(env, scope);
+               goto cleanup;
+            }
+            status = napi_set_named_property(env, data_obj, prop->key, prop_val);
+            if (status != napi_ok) {
+               fprintf(stderr, "N-API Error: Failed to set data property '%s' (%d)\n", prop->key, status);
+               napi_close_handle_scope(env, scope);
+               goto cleanup;
+            }
+         }
+      }
+      status = napi_set_named_property(env, result_obj, "data", data_obj);
+      if (status != napi_ok) {
+         fprintf(stderr, "N-API Error: Failed to set result data property (%d)\n", status);
+         napi_close_handle_scope(env, scope);
+         goto cleanup;
+      }
+   } else {
+      napi_value null_val;
+      status = napi_get_null(env, &null_val);
+      if (status != napi_ok) {
+         fprintf(stderr, "N-API Error: Failed to create null data property (%d)\n", status);
+         napi_close_handle_scope(env, scope);
+         goto cleanup;
+      }
+      status = napi_set_named_property(env, result_obj, "data", null_val);
+      if (status != napi_ok) {
+         fprintf(stderr, "N-API Error: Failed to set result data to null (%d)\n", status);
+         napi_close_handle_scope(env, scope);
+         goto cleanup;
+      }
+   }
+
+   napi_value user_data;
+   if (method_data->user_data_ref) {
+      status = napi_get_reference_value(env, method_data->user_data_ref, &user_data);
+      if (status != napi_ok) {
+         fprintf(stderr, "N-API Error: Failed to get user data reference (%d)\n", status);
+         napi_close_handle_scope(env, scope);
+         goto cleanup;
+      }
+   } else {
+      status = napi_get_null(env, &user_data);
+      if (status != napi_ok) {
+         fprintf(stderr, "N-API Error: Failed to create null user data (%d)\n", status);
+         napi_close_handle_scope(env, scope);
+         goto cleanup;
+      }
+   }
+
+   napi_value global;
+   status = napi_get_global(env, &global);
+   if (status != napi_ok) {
+      fprintf(stderr, "N-API Error: Failed to get global object (%d)\n", status);
+      napi_close_handle_scope(env, scope);
+      goto cleanup;
+   }
+
+   napi_value argv[2] = {result_obj, user_data};
+   status = napi_call_function(env, global, callback, 2, argv, NULL);
+   if (status != napi_ok) {
+      napi_value exception;
+      napi_get_and_clear_last_exception(env, &exception);
+      napi_value err_str;
+      napi_coerce_to_string(env, exception, &err_str);
+      char buffer[RBUS_TEMP_ERROR_MSG_LEN];
+      size_t err_len;
+      napi_get_value_string_utf8(env, err_str, buffer, sizeof(buffer), &err_len);
+      fprintf(stderr, "RBus method callback error: %.*s\n", (int)err_len, buffer);
+   }
+
+cleanup:
+   if (method_data) {
+      pthread_mutex_lock(&method_tsfn_data_mutex);
+      for (int i = 0; i < method_data->property_count; i++) {
+         if (method_data->properties[i].value) {
+            rbusValue_Release(method_data->properties[i].value);
+            method_data->properties[i].value = NULL;
+         }
+         method_data->properties[i].key[0] = '\0';
+      }
+      method_data->method_name[0] = '\0';
+      method_data->property_count = 0;
+      method_data->in_use = false;
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+   }
+   napi_close_handle_scope(env, scope);
+}
+
+typedef void (*rbusMethodAsyncRespHandler_t)(
+   rbusHandle_t handle,
+   char const *methodName,
+   rbusError_t error,
+   rbusObject_t params
+   );
+
+static void method_async_callback(rbusHandle_t handle, const char *method_name, rbusError_t error, rbusObject_t out_params) {
+   MethodThreadSafeData *method_data = NULL;
+   pthread_mutex_lock(&method_tsfn_data_mutex);
+   for (int i = 0; i < MAX_TSFN_DATA; ++i) {
+      if (method_tsfn_data_pool[i].in_use && strcmp(method_tsfn_data_pool[i].method_name, method_name) == 0) {
+         method_data = &method_tsfn_data_pool[i];
+         break;
+      }
+   }
+   if (!method_data) {
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+      fprintf(stderr, "Error: No MethodThreadSafeData found for method '%s'\n", method_name);
+      return;
+   }
+
+   if (!method_data->in_use) {
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+      fprintf(stderr, "Error: MethodThreadSafeData not in use for method '%s'\n", method_name);
+      return;
+   }
+
+   method_data->error = error;
+   method_data->property_count = 0;
+   for (int i = 0; i < MAX_PROPERTIES; i++) {
+      method_data->properties[i].key[0] = '\0';
+      if (method_data->properties[i].value) {
+         rbusValue_Release(method_data->properties[i].value);
+         method_data->properties[i].value = NULL;
+      }
+   }
+
+   if (out_params && error == RBUS_ERROR_SUCCESS) {
+      rbusProperty_t prop = rbusObject_GetProperties(out_params);
+      int prop_count = 0;
+      while (prop && prop_count < MAX_PROPERTIES) {
+         const char *key = rbusProperty_GetName(prop);
+         rbusValue_t val = rbusProperty_GetValue(prop);
+         if (key && val) {
+            size_t key_len = strlen(key);
+            if (key_len >= PROPERTY_NAME_MAX_LEN) {
+               fprintf(stderr, "Warning: Property key too long in method_async_callback, skipping\n");
+               prop = rbusProperty_GetNext(prop);
+               continue;
+            }
+            memcpy(method_data->properties[prop_count].key, key, key_len + 1);
+            rbusValue_Init(&method_data->properties[prop_count].value);
+            rbusValue_Copy(method_data->properties[prop_count].value, val);
+            prop_count++;
+         }
+         prop = rbusProperty_GetNext(prop);
+      }
+      method_data->property_count = prop_count;
+      if (prop) {
+         fprintf(stderr, "Warning: Exceeded maximum properties (%d) in method_async_callback, some properties ignored\n", MAX_PROPERTIES);
+      }
+   }
+
+   napi_status status = napi_call_threadsafe_function(method_data->tsfn, method_data, napi_tsfn_nonblocking);
+   if (status != napi_ok) {
+      fprintf(stderr, "Error: Failed to call threadsafe function for method '%s' (N-API status: %d)\n",
+         method_data->method_name, status);
+      for (int i = 0; i < method_data->property_count; i++) {
+         if (method_data->properties[i].value) {
+            rbusValue_Release(method_data->properties[i].value);
+            method_data->properties[i].value = NULL;
+         }
+         method_data->properties[i].key[0] = '\0';
+      }
+      method_data->method_name[0] = '\0';
+      method_data->property_count = 0;
+      method_data->in_use = false;
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+      return;
+   }
+
+   pthread_mutex_unlock(&method_tsfn_data_mutex);
+}
+
 static void event_handler(rbusHandle_t handle, rbusEvent_t const *event, rbusEventSubscription_t *subscription) {
    SubscriptionData *sub = (SubscriptionData *)subscription->userData;
    pthread_mutex_lock(&subscriptions_mutex);
@@ -497,7 +920,6 @@ static void event_handler(rbusHandle_t handle, rbusEvent_t const *event, rbusEve
    pthread_mutex_unlock(&tsfn_data_mutex);
 
    if (!ts_data) {
-      pthread_mutex_unlock(&subscriptions_mutex);
       fprintf(stderr, "Warning: ThreadSafeData pool exhausted, event '%s' dropped\n", event->name);
       return;
    }
@@ -1059,6 +1481,333 @@ static napi_value rbus_unsubscribe_event(napi_env env, napi_callback_info info) 
    return result;
 }
 
+static napi_value rbus_invoke_method(napi_env env, napi_callback_info info) {
+   size_t argc = 2;
+   napi_value args[2];
+   napi_value exports;
+   napi_status status = napi_get_cb_info(env, info, &argc, args, &exports, NULL);
+   if (status != napi_ok || argc < 1 || argc > 2) {
+      throw_error(env, "Expected 1-2 arguments: methodName (string), [params (object)]", 0, status);
+      return NULL;
+   }
+
+   napi_valuetype arg_type;
+   status = napi_typeof(env, args[0], &arg_type);
+   if (status != napi_ok || arg_type != napi_string) {
+      throw_error(env, "methodName must be a string", 0, status);
+      return NULL;
+   }
+
+   if (argc == 2) {
+      status = napi_typeof(env, args[1], &arg_type);
+      if (status != napi_ok || arg_type != napi_object) {
+         throw_error(env, "params must be an object", 0, status);
+         return NULL;
+      }
+   }
+
+   char method_name[METHOD_NAME_MAX_LEN];
+   size_t method_len;
+   status = napi_get_value_string_utf8(env, args[0], method_name, METHOD_NAME_MAX_LEN, &method_len);
+   if (status != napi_ok || method_len >= METHOD_NAME_MAX_LEN) {
+      throw_error(env, method_len >= METHOD_NAME_MAX_LEN ? "methodName too long" : "Failed to get methodName string", 0, status);
+      return NULL;
+   }
+
+   rbusHandle_t handle = get_rbus_handle(env, exports);
+   if (!handle) {
+      return NULL;
+   }
+
+   rbusObject_t in_params = NULL;
+   if (argc == 2) {
+      in_params = convert_js_object_to_rbus(env, args[1]);
+      if (!in_params) {
+         return NULL;
+      }
+   }
+
+   rbusObject_t out_params;
+   rbusError_t err = rbusMethod_Invoke(handle, method_name, in_params, &out_params);
+   if (in_params) {
+      rbusObject_Release(in_params);
+   }
+
+   if (err != RBUS_ERROR_SUCCESS) {
+      throw_error(env, "rbusMethod_Invoke failed", err, napi_ok);
+      return NULL;
+   }
+
+   napi_value result_obj;
+   status = napi_create_object(env, &result_obj);
+   if (status != napi_ok) {
+      rbusObject_Release(out_params);
+      throw_error(env, "Failed to create result object", 0, status);
+      return NULL;
+   }
+
+   napi_value error_val;
+   status = napi_get_null(env, &error_val);
+   if (status != napi_ok) {
+      rbusObject_Release(out_params);
+      throw_error(env, "Failed to create null error", 0, status);
+      return NULL;
+   }
+   status = napi_set_named_property(env, result_obj, "error", error_val);
+   if (status != napi_ok) {
+      rbusObject_Release(out_params);
+      throw_error(env, "Failed to set error property", 0, status);
+      return NULL;
+   }
+
+   napi_value method_name_val;
+   status = napi_create_string_utf8(env, method_name, NAPI_AUTO_LENGTH, &method_name_val);
+   if (status != napi_ok) {
+      rbusObject_Release(out_params);
+      throw_error(env, "Failed to create method name string", 0, status);
+      return NULL;
+   }
+   status = napi_set_named_property(env, result_obj, "methodName", method_name_val);
+   if (status != napi_ok) {
+      rbusObject_Release(out_params);
+      throw_error(env, "Failed to set methodName property", 0, status);
+      return NULL;
+   }
+
+   if (out_params) {
+      rbusProperty_t prop = rbusObject_GetProperties(out_params);
+      napi_value data_obj;
+      status = napi_create_object(env, &data_obj);
+      if (status != napi_ok) {
+         rbusObject_Release(out_params);
+         throw_error(env, "Failed to create data object", 0, status);
+         return NULL;
+      }
+
+      while (prop) {
+         const char *key = rbusProperty_GetName(prop);
+         rbusValue_t val = rbusProperty_GetValue(prop);
+         if (key && val) {
+            napi_value prop_val = convert_rbus_value_to_js(env, val);
+            if (!prop_val) {
+               rbusObject_Release(out_params);
+               return NULL;
+            }
+            status = napi_set_named_property(env, data_obj, key, prop_val);
+            if (status != napi_ok) {
+               fprintf(stderr, "N-API Error: Failed to set data property '%s' (%d)\n", key, status);
+               rbusObject_Release(out_params);
+               return NULL;
+            }
+         }
+         prop = rbusProperty_GetNext(prop);
+      }
+      status = napi_set_named_property(env, result_obj, "data", data_obj);
+      if (status != napi_ok) {
+         rbusObject_Release(out_params);
+         throw_error(env, "Failed to set data property", 0, status);
+         return NULL;
+      }
+      rbusObject_Release(out_params);
+   } else {
+      napi_value null_val;
+      status = napi_get_null(env, &null_val);
+      if (status != napi_ok) {
+         throw_error(env, "Failed to create null data property", 0, status);
+         return NULL;
+      }
+      status = napi_set_named_property(env, result_obj, "data", null_val);
+      if (status != napi_ok) {
+         throw_error(env, "Failed to set data to null", 0, status);
+         return NULL;
+      }
+   }
+
+   return result_obj;
+}
+
+static napi_value rbus_invoke_method_async(napi_env env, napi_callback_info info) {
+   size_t argc = 4;
+   napi_value args[4];
+   napi_value exports;
+   napi_status status = napi_get_cb_info(env, info, &argc, args, &exports, NULL);
+   if (status != napi_ok || argc < 3 || argc > 4) {
+      throw_error(env, "Expected 3-4 arguments: methodName (string), params (object), callback (function), [timeout (number)]", 0, status);
+      return NULL;
+   }
+
+   napi_valuetype arg_type;
+   status = napi_typeof(env, args[0], &arg_type);
+   if (status != napi_ok || arg_type != napi_string) {
+      throw_error(env, "methodName must be a string", 0, status);
+      return NULL;
+   }
+
+   status = napi_typeof(env, args[1], &arg_type);
+   if (status != napi_ok || arg_type != napi_object) {
+      throw_error(env, "params must be an object", 0, status);
+      return NULL;
+   }
+
+   status = napi_typeof(env, args[2], &arg_type);
+   if (status != napi_ok || arg_type != napi_function) {
+      throw_error(env, "callback must be a function", 0, status);
+      return NULL;
+   }
+
+   char method_name[METHOD_NAME_MAX_LEN];
+   size_t method_len;
+   status = napi_get_value_string_utf8(env, args[0], method_name, METHOD_NAME_MAX_LEN, &method_len);
+   if (status != napi_ok || method_len >= METHOD_NAME_MAX_LEN) {
+      throw_error(env, method_len >= METHOD_NAME_MAX_LEN ? "methodName too long" : "Failed to get methodName string", 0, status);
+      return NULL;
+   }
+
+   int timeout = 0;
+   if (argc > 3) {
+      status = napi_typeof(env, args[3], &arg_type);
+      if (status != napi_ok || arg_type != napi_number) {
+         throw_error(env, "timeout must be a number", 0, status);
+         return NULL;
+      }
+      napi_get_value_int32(env, args[3], &timeout);
+      if (timeout < 0) {
+         throw_error(env, "timeout must be non-negative", 0, napi_ok);
+         return NULL;
+      }
+   }
+
+   rbusHandle_t handle = get_rbus_handle(env, exports);
+   if (!handle) {
+      return NULL;
+   }
+
+   pthread_mutex_lock(&method_tsfn_data_mutex);
+   MethodThreadSafeData *method_data = NULL;
+   for (int i = 0; i < MAX_TSFN_DATA; ++i) {
+      if (!method_tsfn_data_pool[i].in_use) {
+         method_data = &method_tsfn_data_pool[i];
+         memset(method_data, 0, sizeof(MethodThreadSafeData));
+         method_data->in_use = true;
+         break;
+      }
+   }
+   if (!method_data) {
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+      throw_error(env, "Maximum number of async method calls reached", 0, napi_ok);
+      return NULL;
+   }
+
+   strncpy(method_data->method_name, method_name, METHOD_NAME_MAX_LEN - 1);
+   method_data->handle = handle;
+
+   uuid_t uuid;
+   uuid_generate_random(uuid);
+   uuid_unparse(uuid, method_data->uuid);
+
+   status = napi_create_reference(env, args[2], 1, &method_data->callback_ref);
+   if (status != napi_ok) {
+      pthread_mutex_lock(&method_tsfn_data_mutex);
+      method_data->in_use = false;
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+      throw_error(env, "Failed to create callback reference", 0, status);
+      return NULL;
+   }
+
+   napi_ref user_data_ref = NULL;
+   if (argc > 2) {
+      status = napi_create_reference(env, args[1], 1, &user_data_ref);
+      if (status != napi_ok) {
+         pthread_mutex_lock(&method_tsfn_data_mutex);
+         napi_delete_reference(env, method_data->callback_ref);
+         method_data->in_use = false;
+         pthread_mutex_unlock(&method_tsfn_data_mutex);
+         throw_error(env, "Failed to create userData reference", 0, status);
+         return NULL;
+      }
+   }
+   method_data->user_data_ref = user_data_ref;
+
+   napi_value async_resource_name;
+   status = napi_create_string_utf8(env, "rbus_method_callback", NAPI_AUTO_LENGTH, &async_resource_name);
+   if (status != napi_ok) {
+      pthread_mutex_lock(&method_tsfn_data_mutex);
+      if (method_data->user_data_ref) {
+         napi_delete_reference(env, method_data->user_data_ref);
+      }
+      napi_delete_reference(env, method_data->callback_ref);
+      method_data->in_use = false;
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+      throw_error(env, "Failed to create async resource name", 0, status);
+      return NULL;
+   }
+
+   status = napi_create_threadsafe_function(
+      env,
+      NULL,
+      NULL,
+      async_resource_name,
+      0,
+      1,
+      method_data,
+      method_tsfn_finalize,
+      NULL,
+      method_tsfn_call,
+      &method_data->tsfn
+   );
+   if (status != napi_ok) {
+      pthread_mutex_lock(&method_tsfn_data_mutex);
+      if (method_data->user_data_ref) {
+         napi_delete_reference(env, method_data->user_data_ref);
+      }
+      napi_delete_reference(env, method_data->callback_ref);
+      method_data->in_use = false;
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+      throw_error(env, "Failed to create thread-safe function", 0, status);
+      return NULL;
+   }
+
+   rbusObject_t in_params = NULL;
+   if (argc == 4) {
+      in_params = convert_js_object_to_rbus(env, args[1]);
+      if (!in_params) {
+         pthread_mutex_lock(&method_tsfn_data_mutex);
+         napi_release_threadsafe_function(method_data->tsfn, napi_tsfn_release);
+         if (method_data->user_data_ref) {
+            napi_delete_reference(env, method_data->user_data_ref);
+         }
+         napi_delete_reference(env, method_data->callback_ref);
+         method_data->in_use = false;
+         pthread_mutex_unlock(&method_tsfn_data_mutex);
+         return NULL;
+      }
+   }
+
+   rbusError_t err = rbusMethod_InvokeAsync(handle, method_name, in_params, method_async_callback, timeout);
+   if (in_params) {
+      rbusObject_Release(in_params);
+   }
+
+   if (err != RBUS_ERROR_SUCCESS) {
+      pthread_mutex_lock(&method_tsfn_data_mutex);
+      napi_release_threadsafe_function(method_data->tsfn, napi_tsfn_release);
+      if (method_data->user_data_ref) {
+         napi_delete_reference(env, method_data->user_data_ref);
+      }
+      napi_delete_reference(env, method_data->callback_ref);
+      method_data->in_use = false;
+      pthread_mutex_unlock(&method_tsfn_data_mutex);
+      throw_error(env, "rbusMethod_InvokeAsync failed", err, napi_ok);
+      return NULL;
+   }
+
+   pthread_mutex_unlock(&method_tsfn_data_mutex);
+
+   napi_value result;
+   napi_get_boolean(env, true, &result);
+   return result;
+}
+
 static void module_cleanup(void *arg) {
    pthread_mutex_lock(&subscriptions_mutex);
    for (int i = 0; i < MAX_SUBSCRIPTIONS; ++i) {
@@ -1086,18 +1835,39 @@ static void module_cleanup(void *arg) {
    }
    pthread_mutex_unlock(&tsfn_data_mutex);
 
+   pthread_mutex_lock(&method_tsfn_data_mutex);
+   for (int i = 0; i < MAX_TSFN_DATA; ++i) {
+      if (method_tsfn_data_pool[i].in_use) {
+         for (int j = 0; j < method_tsfn_data_pool[i].property_count; j++) {
+            if (method_tsfn_data_pool[i].properties[j].value) {
+               rbusValue_Release(method_tsfn_data_pool[i].properties[j].value);
+               method_tsfn_data_pool[i].properties[j].value = NULL;
+            }
+            method_tsfn_data_pool[i].properties[j].key[0] = '\0';
+         }
+         method_tsfn_data_pool[i].method_name[0] = '\0';
+         method_tsfn_data_pool[i].property_count = 0;
+         method_tsfn_data_pool[i].in_use = false;
+      }
+   }
+   pthread_mutex_unlock(&method_tsfn_data_mutex);
+
    pthread_mutex_destroy(&subscriptions_mutex);
    pthread_mutex_destroy(&tsfn_data_mutex);
+   pthread_mutex_destroy(&method_tsfn_data_mutex);
 }
 
 static napi_value init(napi_env env, napi_value exports) {
    pthread_mutex_init(&subscriptions_mutex, NULL);
    pthread_mutex_init(&tsfn_data_mutex, NULL);
+   pthread_mutex_init(&method_tsfn_data_mutex, NULL);
    for (int i = 0; i < MAX_SUBSCRIPTIONS; ++i) {
       subscriptions[i].in_use = false;
    }
    for (int i = 0; i < MAX_TSFN_DATA; ++i) {
       tsfn_data_pool[i].in_use = false;
+      method_tsfn_data_pool[i].in_use = false;
+      method_tsfn_data_pool[i].uuid[0] = '\0';
    }
    subscription_count = 0;
 
@@ -1109,12 +1879,15 @@ static napi_value init(napi_env env, napi_value exports) {
        {"setValue", NULL, rbus_set_value, NULL, NULL, NULL, napi_default, NULL},
        {"getValue", NULL, rbus_get_value, NULL, NULL, NULL, napi_default, NULL},
        {"subscribe", NULL, rbus_subscribe_event, NULL, NULL, NULL, napi_default, NULL},
-       {"unsubscribe", NULL, rbus_unsubscribe_event, NULL, NULL, NULL, napi_default, NULL}
+       {"unsubscribe", NULL, rbus_unsubscribe_event, NULL, NULL, NULL, napi_default, NULL},
+       {"invokeMethod", NULL, rbus_invoke_method, NULL, NULL, NULL, napi_default, NULL},
+       {"invokeMethodAsync", NULL, rbus_invoke_method_async, NULL, NULL, NULL, napi_default, NULL}
    };
    napi_status status = napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
    if (status != napi_ok) {
       pthread_mutex_destroy(&subscriptions_mutex);
       pthread_mutex_destroy(&tsfn_data_mutex);
+      pthread_mutex_destroy(&method_tsfn_data_mutex);
       throw_error(env, "Failed to define module properties", 0, status);
       return NULL;
    }
