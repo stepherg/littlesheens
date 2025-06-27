@@ -124,6 +124,20 @@ try {
 }
 ```
 
+#### 6. `invokeMethod`
+Invoke an RBus method.
+
+```javascript
+const rbus = require('./rbus');
+
+try {
+   const result = rbus.invokeMethod('Device.X_RDK_Xmidt.SendData()');
+   console.log('Result without params:', JSON.stringify(result, null, 2));
+} catch (err) {
+   console.error('invokeMethod Error:', err.message);
+}
+```
+
 
 ## Troubleshooting
 
