@@ -106,7 +106,6 @@ target_link_libraries(duktape PRIVATE m)
 add_library(machines SHARED
    ${SHEENS_SRC}/machines.c 
    ${SHEENS_SRC}/duk_console.c 
-   ${SHEENS_SRC}/rbus_duktape.c
    machines_js.c
 )
 
