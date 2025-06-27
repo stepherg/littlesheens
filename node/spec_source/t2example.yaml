@@ -43,14 +43,14 @@ nodes:
         # default go to Idle waiting on events
         - target: Idle
 
-  Task:
+  QueryParams:
     actions:
       - interpreter: ecmascript
         source: |-
           var bs = _.bindings;
           var id = bs._id;
 
-          _.log("Running task");
+          _.log("Running query");
           // iterate over Paramaters in bs
           var params =  bs.parameters;
 
@@ -70,14 +70,60 @@ nodes:
           var now = parseInt(Date.now()/1000)
           _.out({"ts":now, "id": id, "did":"task", "actions":actions});
           return _.bindings;
-      #- type: RBUS
-      #  method: GET
-      #  paths: 
-      #    - Device.DeviceInfo.Uptime
-      #    - Device.DeviceInfo.SerialNumber
-      #    - Device.DeviceInfo.Manufacturer
-      #    - Device.DeviceInfo.ModelName
+    branching:
+      branches:
+        - target: QueryParamsWait
 
+  QueryParamsWait:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"jrpc-response":"?params"}
+          target: SendData
+
+  SendData:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var id = bs._id;
+          _.log("Got JRPC reponse");
+          actions = []
+
+          // submit the work
+          actions.push({
+            "jsonrpc": "2.0",
+            "method": "send_t2_parameters",
+            "id": id,
+            "params": {
+              "Parameters": bs["?params"]
+            }
+          });
+
+          var now = parseInt(Date.now()/1000)
+          _.out({"ts":now, "id": id, "did":"task", "actions":actions});
+          return _.bindings;
+    branching:
+      branches:
+        - target: SendDataWait
+
+  SendDataWait:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"jrpc-response":true}
+          target: Cleanup
+
+  Cleanup:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          _.log("Cleanup");
+          delete bs["?params"];
+          return _.bindings;
     branching:
       branches:
         - target: Idle
@@ -101,7 +147,7 @@ nodes:
       branches:
         - target: Idle
 
-  # Schedule the periodic and perform Task
+  # Schedule the periodic and perform QueryParams
   schedulePeriodic:
     # set periodic timer
     timer: 
@@ -109,7 +155,7 @@ nodes:
       id: timer-periodic
     branching:
       branches:
-        - target: Task
+        - target: QueryParams
 
   Idle:
     branching:
@@ -126,7 +172,7 @@ nodes:
           target: shutdown
         - pattern: |
             {"event":"trigger"}
-          target: Task
+          target: QueryParams
 
   shutdown:
     action:

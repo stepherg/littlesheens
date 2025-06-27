@@ -171,7 +171,7 @@ function CrewUpdate(crew_js, steppeds_js) {
 function process_event(crew, ev) {
    var ev= JSON.stringify(ev);
 
-   console.log("Processing: ", ev);
+   //console.log("Processing: ", ev);
 
    // process
    var steppeds = CrewProcess(crew, ev);
@@ -188,13 +188,11 @@ function process_event(crew, ev) {
             var action = emit.actions[j];
             console.log(action);
             if(action.hasOwnProperty("jsonrpc")) {
-               //console.log(process_jrpc(action));
-               //jrpc_response = process_jrpc(action);
                ws.send(JSON.stringify(action));
-               //console.log(jrpc_response);
-               //setTimeout(Cfg.action_callback, 0, jrpc_response, [jrpc_response.id]);
             }
          }
+      } else {
+         console.log(emit);
       }
       
    }
@@ -264,11 +262,11 @@ ws.on('message', (data) => {
       // Handle notifications (no id)
       if (!response.id && response.method === 'rbus_event') {
          console.log(`Event received: ${response.result.eventName} (${response.result.type}): ${JSON.stringify(response.result.data)}`);
-         var ev= {event: response.params.data};
+         var ev= {event: "jrpc-event"};
          crew_js = process_event(crew_js, ev);
          return;
       } else if (response.id && response.result){
-         var ev= {to: response.id, event: response.result};
+         var ev= {to: response.id, 'jrpc-response': response.result};
          crew_js = process_event(crew_js, ev);
          return;
       }

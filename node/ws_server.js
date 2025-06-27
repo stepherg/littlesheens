@@ -26,7 +26,7 @@ jsonRpcServer.addMethod('retrieve_t2_parameters', (params) => {
    for (var i = 0; i < elements.length; i++) {
       var element = elements[i];
       if (element['type'] === 'dataModel') {
-         console.log("Processing ", element);
+         //console.log("Processing ", element);
          try {
             if (element.name)
                results[element.name] = rbus.getValue(element.reference);
@@ -46,6 +46,10 @@ jsonRpcServer.addMethod('retrieve_t2_parameters', (params) => {
    }
    return results;
    //throw new Error('Invalid parameters');
+});
+
+jsonRpcServer.addMethod('send_t2_parameters', (params) => {
+   return true;
 });
 
 wss.on('connection', ws => {
