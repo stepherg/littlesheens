@@ -58,9 +58,21 @@ wss.on('connection', ws => {
    ws.on('message', async message => {
       try {
          const jsonRpcRequest = JSON.parse(message.toString());
-         const jsonRpcResponse = await jsonRpcServer.receive(jsonRpcRequest);
-         if (jsonRpcResponse) {
-            ws.send(JSON.stringify(jsonRpcResponse));
+         if (jsonRpcRequest["method"] == "setTimeout") {
+            console.log(message.toString());
+            setTimeout(() => {
+               ws.send(JSON.stringify({
+                  jsonrpc: '2.0',
+                  method: 'event',
+                  params: jsonRpcRequest.params.data,
+                  id: null
+               }));
+            }, jsonRpcRequest.params.delay);
+         } else {
+            const jsonRpcResponse = await jsonRpcServer.receive(jsonRpcRequest);
+            if (jsonRpcResponse) {
+               ws.send(JSON.stringify(jsonRpcResponse));
+            }
          }
       } catch (error) {
          console.error('Error processing message:', error);
@@ -72,6 +84,13 @@ wss.on('connection', ws => {
          }));
       }
    });
+
+   const request = {
+            jsonrpc: "2.0",
+            method: "test",
+            params: {}
+        };
+   ws.send(JSON.stringify(request));
 
    ws.on('close', () => {
       console.log('Client disconnected');

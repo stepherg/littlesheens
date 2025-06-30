@@ -260,8 +260,9 @@ ws.on('message', (data) => {
       console.log(JSON.stringify(response, null, 2));
 
       // Handle notifications (no id)
-      if (!response.id && response.method === 'rbus_event') {
-         console.log(`Event received: ${response.result.eventName} (${response.result.type}): ${JSON.stringify(response.result.data)}`);
+      //if (!response.id && response.method === 'rbus_event') {
+      if (!response.id) {
+         console.log(`Event received: ${JSON.stringify(response)}`);
          var ev= {event: "jrpc-event"};
          crew_js = process_event(crew_js, ev);
          return;

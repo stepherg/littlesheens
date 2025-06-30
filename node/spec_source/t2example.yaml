@@ -88,7 +88,11 @@ nodes:
         source: |-
           var bs = _.bindings;
           var id = bs._id;
+          var params = bs["?params"];
           _.log("Got JRPC reponse");
+          params["Profile.Name"] = "patched";
+          params["Profile.Version"] = "patched";
+
           actions = []
 
           // submit the work
@@ -97,8 +101,15 @@ nodes:
             "method": "send_t2_parameters",
             "id": id,
             "params": {
-              "Parameters": bs["?params"]
+              "Parameters": params
             }
+          });
+
+          actions.push({
+            "jsonrpc": "2.0",
+            "method": "setTimeout",
+            "id": id,
+            "params": {delay: 1000, data:{name:"timer-periodic"}}
           });
 
           var now = parseInt(Date.now()/1000)
