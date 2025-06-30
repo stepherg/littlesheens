@@ -30,16 +30,6 @@ function generateRandomString(length) {
    return result;
 };
 
-function rbus_getValue(path) { 
-   const startTime = new Date().getTime();
-   while (new Date().getTime() - startTime < 500) {
-      // Busy-wait loop
-   }
-   //console.log("5 seconds have passed (blocking)");
-   console.log(".");
-   return generateRandomString(10); 
-}; 
-
 // sandboxedAction wishes to be a function that can evaluate
 // ECMAScript source in a fresh, pristine, sandboxed environment.
 //
@@ -107,8 +97,7 @@ function sandboxedAction(ctx, bs, src) {
          var ctx_fn = {
             genRandomId: genRandomId,
             generateRandomInt: generateRandomInt, 
-            generateRandomString: generateRandomString,
-            rbus_getValue: rbus_getValue
+            generateRandomString: generateRandomString
          };
 
          code = "\n" +
