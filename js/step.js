@@ -17,7 +17,7 @@
 // STATE will be null when there was no transition.  'Consumed'
 // reports whether the message was consumed during the transition.
 // MESSAGES are the zero or more messages emitted by the action.
-function step(ctx,spec,state,message) {
+function step(ctx, spec, state, message) {
    Times.tick("step");
    try {
       var current = state.bs;
@@ -38,24 +38,53 @@ function step(ctx,spec,state,message) {
       //
       // Actions
       //
-      var actions= node.actions;
+      var actions = node.actions;
       if (!actions) {
          actions = [node.action];
       }
 
       for (var i = 0; i < actions.length; i++) {
-         var action= actions[i];
+         var action = actions[i];
          if (action) {
+            //
+            // interpreter
+            //
             if (action.interpreter) {
                if (interpreterAliases.indexOf(action.interpreter) < 0) {
                   throw {error: "bad interpreter", interpreter: action.interpreter};
                }
+
+               // evaluate in the sandbox
                var evaled = sandboxedAction(ctx, bs, action.source);
                bs = evaled.bs;
                emitted = evaled.emitted;
-            } else if(action.type == 'log') {
+            } else if (action.type == 'log') {
                // do some checks
                print(action.text);
+            } else if (action.type == 'RBUS') {
+               print("RBUS: " + action.method + " " + action.paths);
+            }
+         }
+      }
+
+      //
+      // Timers
+      //
+      var timers = node.timers;
+      if (!timers) {
+         timers = [node.timer];
+      }
+
+      for (var i = 0; i < timers.length; i++) {
+         var timer = timers[i];
+         if (timer) {
+            if (ctx.debug) print("SCHEDULING TIMER: ", bs['_id'], timer.delay);
+
+            // safely evalute the field
+            var delay = sandboxedExpression(ctx, bs, timer.delay);
+            // only set timer if delay is given
+            if (delay) {
+               ctx.timers.push(setTimeout(ctx.fire, delay, timer.id, [bs._id]));
             }
          }
       }
@@ -71,6 +100,7 @@ function step(ctx,spec,state,message) {
       var consuming = false;
       if (branching.type == "message") {
          if (!message) {
+            //print("no message");
             return null;
          }
          consuming = true;
@@ -79,20 +109,41 @@ function step(ctx,spec,state,message) {
       var branches = branching.branches;
       for (var i = 0; i < branches.length; i++) {
          var branch = branches[i];
+
+         if (ctx.debug) print("TEST BRANCH:  ", branch);
+
+         //
+         // pattern
+         //
          var pattern = branch.pattern;
          if (pattern) {
             if (spec.parsepatterns || spec.patternsyntax == "json") {
-               pattern = JSON.parse(pattern);
+               // Allow trailing whitespace/newlines in generated pattern strings and remove literal \n suffixes
+               try {
+                  let p = (pattern && pattern.trim && pattern.trim()) ? pattern.trim() : pattern;
+                  if (typeof p === 'string') {
+                     // Remove one or more trailing literal \n sequences introduced by generators
+                     p = p.replace(/\\n+$/g, '').trim();
+                  }
+                  pattern = JSON.parse(p);
+               } catch (e) {
+                  print('Pattern parse error:', e && e.message ? e.message : e, 'Pattern value:', pattern);
+                  throw e;
+               }
             }
+            //print(pattern, against, bs);
             var bss = match(ctx, pattern, against, bs);
             if (!bss || bss.length == 0) {
+               if (ctx.debug) print("NO MATCH: ", against, pattern);
                continue;
             }
             if (1 < bss.length) {
                throw {error: "too many sets of bindings", bss: bss};
             }
             bs = bss[0];
+            if (ctx.debug) print("MATCHED: ", against, pattern);
          }
+
          //
          // Branching guards
          //
@@ -105,9 +156,24 @@ function step(ctx,spec,state,message) {
                continue;
             }
             bs = evaled.bs;
-            // Check that we didn't emit any messages ...
          }
-         return {to: {node: branch.target, bs: bs}, consumed: consuming, emitted: emitted};
+
+         //
+         // Branching test
+         //
+         if (branch.test) {
+            var evaled = sandboxedExpression(ctx, bs, branch.test);
+            if (!evaled) {
+               continue;
+            }
+            if (ctx.debug) print("TEST MATCHED: ", branch.test, evaled);
+         }
+
+
+         if (typeof branch.target === 'object')
+            return {to: {node: branch.target.dest, bs: bs}, consumed: consuming, emitted: emitted};
+         else
+            return {to: {node: branch.target, bs: bs}, consumed: consuming, emitted: emitted};
       }
 
       return null;
@@ -121,7 +187,7 @@ function step(ctx,spec,state,message) {
 // Returns {to: STATE, consumed: BOOL, emitted: MESSAGES}.
 //
 // For an description of the returned value, see doc for 'step'.
-function walk(ctx,spec,state,message) {
+function walk(ctx, spec, state, message) {
 
    var maxSteps = 32;
    if (ctx && ctx.MaxSteps) {
@@ -143,12 +209,18 @@ function walk(ctx,spec,state,message) {
          break;
       }
 
+      if (ctx.debug) {
+         print(i, ": Stepping into ", JSON.stringify(stepped.to));
+      }
+      //
+      // STEP
+      //
       var maybe = step(ctx, spec, stepped.to, message);
       if (ctx.debug) {
          if (message) {
-            print(i,": **",JSON.stringify(message), "** -- ", JSON.stringify(stepped.to)," -> ", JSON.stringify(maybe));
+            print(i, ": **", JSON.stringify(message), "** -- ", JSON.stringify(stepped.to), " -> ", JSON.stringify(maybe));
          } else {
-            print(i,": ", JSON.stringify(stepped.to)," -> ", JSON.stringify(maybe));
+            print(i, ": ", JSON.stringify(stepped.to), " -> ", JSON.stringify(maybe));
          }
       }
 
@@ -161,7 +233,7 @@ function walk(ctx,spec,state,message) {
       }
 
       if (maybe.consumed) {
-         // We consumed the pending message; don't use it again.
+         // The node consumed the pending message; don't use it again.
          message = null;
          consumed = true;
       }
@@ -170,6 +242,8 @@ function walk(ctx,spec,state,message) {
 
       if (stepped && 0 < stepped.emitted.length) {
          // Accumulated emitted messages.
+         // TODO:  RDL  do we need to push these into emitted to actually accumulate emits from all states?
+         // Else only the last emitted transitioned emit gets returned
          emitted = emitted.concat(stepped.emitted);
       }
    }
@@ -178,5 +252,9 @@ function walk(ctx,spec,state,message) {
    stepped.consumed = consumed;
 
    return stepped;
+}
+
+if (typeof module !== 'undefined') {
+   module.exports = {walk};
 }
 

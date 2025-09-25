@@ -46,3 +46,7 @@ var Times = function() {
     };
 }();
 
+if (typeof module !== 'undefined') {
+	module.exports = Times;
+}
+

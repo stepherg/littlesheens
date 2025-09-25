@@ -1,0 +1,16 @@
+{
+   "name": "node-automations",
+   "version": "0.0.1",
+   "scripts": {
+      "preinstall": "./src/build_specs.sh",
+      "start": "./src/build_specs.sh; node --trace-uncaught index.js",
+      "convert": "./src/build_specs.sh"
+   },
+   "dependencies": {
+      "eslint": "^9.36.0",
+      "json-rpc-2.0": "^1.7.0",
+      "littlesheens": "file:node-littlesheens",
+      "safe-eval": "^0.4.1",
+      "ws": "^8.18.2"
+   }
+}

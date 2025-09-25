@@ -18,17 +18,17 @@
 // pattern, M is a message, and BS are input bindings.
 //
 // Returns null or a set of sets of bindings.
-var match = function() {
+var match = function () {
 
-   var isVar = function(s) {
+   var isVar = function (s) {
       return typeof s == 'string' && s.charAt(0) == '?';
    };
 
-   var isOptVar = function(s) {
-      return typeof s == 'string' && s.substring(0,2) == '??';
+   var isOptVar = function (s) {
+      return typeof s == 'string' && s.substring(0, 2) == '??';
    };
 
-   var copyMap = function(m) {
+   var copyMap = function (m) {
       var acc = {};
       for (var p in m) {
          acc[p] = m[p];
@@ -36,15 +36,15 @@ var match = function() {
       return acc;
    };
 
-   var copyArray = function(xs) {
+   var copyArray = function (xs) {
       return xs.slice();
    }
 
-   var isAnonymous = function(s) {
+   var isAnonymous = function (s) {
       return s === "?";
    }
 
-   var extend = function(bs, b, v) {
+   var extend = function (bs, b, v) {
       var acc = copyMap(bs);
       acc[b] = v;
       return acc;
@@ -52,7 +52,7 @@ var match = function() {
 
    var match;
 
-   var matchWithBindings = function(ctx, bss, v, mv) {
+   var matchWithBindings = function (ctx, bss, v, mv) {
       var acc = [];
       for (var i = 0; i < bss.length; i++) {
          var bs = bss[i];
@@ -61,7 +61,7 @@ var match = function() {
       return acc;
    };
 
-   var arraycatMatch = function(ctx, bss, p, m, varCount) {
+   var arraycatMatch = function (ctx, bss, p, m, varCount) {
       if (varCount === undefined) {
          varCount = 0;
       }
@@ -102,8 +102,8 @@ var match = function() {
             // message with the current element removed.  This
             // approach is probably not optimal, but it's easier
             // to understand.
-            var p_ = p.slice(i+1);
-            var m_ = copyArray(m); m_.splice(j,1);
+            var p_ = p.slice(i + 1);
+            var m_ = copyArray(m); m_.splice(j, 1);
             bss_ = arraycatMatch(ctx, bss_, p_, m_, varCount);
             for (var k = 0; k < bss_.length; k++) {
                acc.push(bss_[k]);
@@ -118,7 +118,7 @@ var match = function() {
       return acc;
    };
 
-   var mapcatMatch = function(ctx, bss, p, m) {
+   var mapcatMatch = function (ctx, bss, p, m) {
       var varCount = 0;
       for (var k in p) {
          var v = p[k];
@@ -138,7 +138,7 @@ var match = function() {
                if (ext.length == 0) {
                   continue;
                }
-               acc = acc.concat(ext); 
+               acc = acc.concat(ext);
             }
             bss = acc;
          } else {
@@ -159,7 +159,7 @@ var match = function() {
       return bss;
    };
 
-   inequal = function(ctx,m,bs,v) {
+   var inequal = function (ctx, m, bs, v) {
       if (!isVar(v)) {
          return {applied: false};
       }
@@ -175,11 +175,11 @@ var match = function() {
       }
 
       var ieq, vv;
-      var ieqs = ["<=",">=","!=",">","<"];
+      var ieqs = ["<=", ">=", "!=", ">", "<"];
       for (var i = 0; i < ieqs.length; i++) {
          ieq = ieqs[i];
-         if (v.substring(1, 1+ieq.length) == ieq) {
-            vv = "?" + v.substring(1+ieq.length);
+         if (v.substring(1, 1 + ieq.length) == ieq) {
+            vv = "?" + v.substring(1 + ieq.length);
             break;
          } else {
             ieq = null;
@@ -230,7 +230,7 @@ var match = function() {
       return {applied: true, bss: [bs]};
    };
 
-   match = function(ctx,p,m,bs) {
+   match = function (ctx, p, m, bs) {
       if (!bs) {
          bs = [];
       }
@@ -279,13 +279,17 @@ var match = function() {
       }
    };
 
-   return function(ctx,p,m,bs) {
+   return function (ctx, p, m, bs) {
       Times.tick("match");
       try {
-         return match(ctx,p,m,bs);
+         return match(ctx, p, m, bs);
       } finally {
          Times.tock("match");
       }
    };
 }();
+
+if (typeof module !== 'undefined') {
+   module.exports = match;
+}
 

@@ -1,11 +1,11 @@
 // Extend String.slice
 if (!String.prototype.slice) {
-   String.prototype.slice = function(start, end) {
+   String.prototype.slice = function (start, end) {
       const length = this.length;
       var startIndex = start || 0;
 
       if (end === undefined) {
-         var endIndex = length; 
+         var endIndex = length;
       } else {
          var endIndex = end;
       }
@@ -26,7 +26,7 @@ if (!String.prototype.slice) {
       else if (endIndex > length)
          endIndex = length;
 
-      const result = '';
+      var result = '';
       for (var i = startIndex; i < endIndex; i++) {
          result += this[i];
       }
@@ -51,29 +51,35 @@ if (!String.prototype.padStart) {
    };
 }
 
-findConsecutiveRepeated = function(arr) {
-  const result = [];
-  var currentSequence = [];
-
-  for (var i = 0; i < arr.length; i++) {
-    if (i > 0 && arr[i] === arr[i - 1]) {
-       currentSequence.push(arr[i]);
-    } else {
-      if (currentSequence.length > 0) {
-        result.push(currentSequence);
-      }
-      currentSequence = [arr[i]];
-    }
-  }
-
-  if (currentSequence.length > 1) {
-    result.push(currentSequence);
-  }
-
-  return result;
+if (!String.prototype.replaceAll) {
+   String.prototype.replaceAll = function (search, replacement) {
+      return this.split(search).join(replacement);
+   };
 }
 
-findUniqueSeq = function(arr) {
+findConsecutiveRepeated = function (arr) {
+   const result = [];
+   var currentSequence = [];
+
+   for (var i = 0; i < arr.length; i++) {
+      if (i > 0 && arr[i] === arr[i - 1]) {
+         currentSequence.push(arr[i]);
+      } else {
+         if (currentSequence.length > 0) {
+            result.push(currentSequence);
+         }
+         currentSequence = [arr[i]];
+      }
+   }
+
+   if (currentSequence.length > 1) {
+      result.push(currentSequence);
+   }
+
+   return result;
+}
+
+findUniqueSeq = function (arr) {
    var result = [];
    var currentSequence = [];
 
@@ -81,7 +87,7 @@ findUniqueSeq = function(arr) {
       if ((i == 0) || (arr[i] === arr[(i - 1)])) {
          continue;
       } else if (arr[i] !== arr[(i - 1)]) {
-         currentSequence.push(arr[(i-1)]);
+         currentSequence.push(arr[(i - 1)]);
 
          if (i == (arr.length - 1)) {
             currentSequence.push(arr[i]);
@@ -90,7 +96,7 @@ findUniqueSeq = function(arr) {
          var temp = result;
          result.push.apply(temp, currentSequence);
          currentSequence = Array();
-      } 
+      }
    }
 
    // final array
@@ -164,10 +170,10 @@ arrtoip = function(arr) {
 // The value to check for truthiness.
 // message	string	(optional)
 // The message to include in the exception.
-assert = function(condition, message) {
-  if (!condition) {
-    throw new Error(message || "Assertion failed");
-  }
+assert = function (condition, message) {
+   if (!condition) {
+      throw new Error(message || "Assertion failed");
+   }
 }
 
 // type(x) → {string}nullable
@@ -176,11 +182,11 @@ assert = function(condition, message) {
 // Returns the type of the given value as a string which might be one of "function", "object", "array", "double", "int", or "bool".
 // 
 // Returns null when no value or null is passed.
-type = function(string) { 
+type = function (string) {
    if (Array.isArray(string)) return "array"
    if (Number.isInteger(string)) return "int"
    if (Number(string) === string && string % 1 !== 0) return "double"
-   return typeof string;     
+   return typeof string;
 }
 
 // shift(arr) → {*}
@@ -189,23 +195,23 @@ type = function(string) {
 // 
 // Returns null if the array was empty or if a non-array argument was passed.
 //
-shift = function(arr) { 
+shift = function (arr) {
    if (!arr) return null;
    if (!Array.isArray(arr)) return null;
 
-   return arr.splice(0, 1);     
+   return arr.splice(0, 1);
 }
 
 //unshift(arr, …Values) → {*}
 //Add the given values to the beginning of the array passed via first argument.
 
 //Returns the last value added to the array.
-unshift = function(arr) { 
+unshift = function (arr) {
    if (!arr) return null;
    if (!Array.isArray(arr)) return null;
 
    const originalLength = arr.length;
-   const numElements = (arguments.length-1);
+   const numElements = (arguments.length - 1);
 
    // copy the original array
    var copy = Object.assign({}, arr);
@@ -223,7 +229,7 @@ unshift = function(arr) {
    // shift additionals in
    var last;
    for (var i = 0; i < numElements; i++) {
-      arr[i] = arguments[i+1];
+      arr[i] = arguments[i + 1];
       last = arr[i];
    }
 
@@ -238,13 +244,13 @@ unshift = function(arr) {
 // If len is omitted, returns everything through the end of the string.
 // If len is negative, leaves that many characters off the string end.
 // Returns the extracted substring.
-substr = function(str, off, lenopt) { 
+substr = function (str, off, lenopt) {
    var temp;
 
    if (lenopt < 0) {
       temp = str.substr(off, (str.length + lenopt - off));
    } else {
-      temp = str.substr(off, lenopt);     
+      temp = str.substr(off, lenopt);
    }
 
    return temp;
@@ -256,8 +262,8 @@ substr = function(str, off, lenopt) {
 // If a limit argument is supplied, the resulting array contains no more than the given amount of entries, that means the string is split at most limit - 1 times total.
 // The separator may either be a plain string or a regular expression.
 // Returns a new array containing the resulting pieces.
-split = function(str, sep, limitopt) { 
-   return str.split(sep, limitopt);     
+split = function (str, sep, limitopt) {
+   return str.split(sep, limitopt);
 }
 
 
@@ -266,15 +272,15 @@ split = function(str, sep, limitopt) {
 // If an array is passed, returns the array in reverse order. If a string is passed, returns the string with the sequence of the characters reversed.
 // Returns the reversed array or string. Returns null if neither an array nor a string were passed.
 reverse = function (arr_or_str) {
-   if (Array.isArray(arr_or_str))  {
+   if (Array.isArray(arr_or_str)) {
       var result = new Array();
-      for(var x = arr_or_str.length-1; x >= 0; x--) {
+      for (var x = arr_or_str.length - 1; x >= 0; x--) {
          result.push(arr_or_str[x]);
       }
       return result;
    } else {
       var result = '';
-      for(var x = arr_or_str.length-1; x >= 0; x--) {
+      for (var x = arr_or_str.length - 1; x >= 0; x--) {
          result += arr_or_str[x];
       }
       return result;
@@ -297,14 +303,14 @@ index = function (arr_or_str, needle) {
 rindex = function (arr_or_str, needle) {
 
    if (Array.isArray(arr_or_str)) {
-      for (var i = (arr_or_str.length - 1); i > 0; i--){
+      for (var i = (arr_or_str.length - 1); i >= 0; i--) {
          if (arr_or_str[i] === needle) {
             return i;
          }
       }
    } else if (typeof arr_or_str === 'string') {
-      for (var i = (arr_or_str.length - 1); i > 0; i--){
-         if (substr(arr_or_str,i,needle.length) === needle) {
+      for (var i = (arr_or_str.length - 1); i >= 0; i--) {
+         if (substr(arr_or_str, i, needle.length) === needle) {
             return i;
          }
       }

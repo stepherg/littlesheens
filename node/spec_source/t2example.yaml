@@ -1,0 +1,200 @@
+name: t2example
+doc: none
+parsepatterns: true
+nodes:
+  stop:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"event":"start"}
+          target: startup
+
+  startup:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var now = parseInt(Date.now()/1000)
+          var id = bs._id;
+          // register for RBUS events
+
+          // decide whether trigger based or periodic
+          _.log("set up trigger conditions");
+
+          _.out({"ts":now, "id": id, "did":"setup"});
+          return _.bindings;
+    branching:
+      branches:
+        - target: initial
+
+  initial:
+    timer:
+      delay: timers.generateNow 
+      id: trigger
+    branching:
+      branches:
+        - target: scheduleFirstInterval
+          test: timers.firstInterval
+
+        - target: onlySchedulePeriodic
+          test: timers.periodicInterval
+
+        # default go to Idle waiting on events
+        - target: Idle
+
+  QueryParams:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var id = bs._id;
+
+          _.log("Running query");
+          // iterate over Paramaters in bs
+          var params =  bs.parameters;
+
+          actions = []
+
+          // submit the work
+          actions.push({
+            "jsonrpc": "2.0",
+            "method": "retrieve_t2_parameters",
+            "id": id,
+            "params": {
+              "Parameters": params
+            }
+          });
+
+          // get the RBUS stuff
+          var now = parseInt(Date.now()/1000)
+          _.out({"ts":now, "id": id, "did":"task", "actions":actions});
+          return _.bindings;
+    branching:
+      branches:
+        - target: QueryParamsWait
+
+  QueryParamsWait:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"jrpc-response":"?params"}
+          target: SendData
+
+  SendData:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var id = bs._id;
+          var params = bs["?params"];
+          _.log("Got JRPC reponse");
+          params["Profile.Name"] = "patched";
+          params["Profile.Version"] = "patched";
+
+          actions = []
+
+          // submit the work
+          actions.push({
+            "jsonrpc": "2.0",
+            "method": "send_t2_parameters",
+            "id": id,
+            "params": {
+              "Parameters": params
+            }
+          });
+
+          actions.push({
+            "jsonrpc": "2.0",
+            "method": "setTimeout",
+            "id": id,
+            "params": {delay: 1000, data:{name:"timer-periodic"}}
+          });
+
+          var now = parseInt(Date.now()/1000)
+          _.out({"ts":now, "id": id, "did":"task", "actions":actions});
+          return _.bindings;
+    branching:
+      branches:
+        - target: SendDataWait
+
+  SendDataWait:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"jrpc-response":true}
+          target: Cleanup
+
+  Cleanup:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          _.log("Cleanup");
+          delete bs["?params"];
+          return _.bindings;
+    branching:
+      branches:
+        - target: Idle
+
+  scheduleFirstInterval:
+    # set first timer event
+    timer: 
+      delay: timers.firstInterval
+      id: timer-firstInterval
+    branching:
+      branches:
+        - target: Idle
+       
+  # Schedule the periodic 
+  onlySchedulePeriodic:
+    # set periodic timer
+    timer: 
+      delay: timers.periodicInterval
+      id: timer-periodic
+    branching:
+      branches:
+        - target: Idle
+
+  # Schedule the periodic and perform QueryParams
+  schedulePeriodic:
+    # set periodic timer
+    timer: 
+      delay: timers.periodicInterval
+      id: timer-periodic
+    branching:
+      branches:
+        - target: QueryParams
+
+  Idle:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"event":"timer-firstInterval"}
+          target: schedulePeriodic
+        - pattern: |
+            {"event":"timer-periodic"}
+          target: schedulePeriodic
+        - pattern: |
+            {"event":"stop"}
+          target: shutdown
+        - pattern: |
+            {"event":"trigger"}
+          target: QueryParams
+
+  shutdown:
+    action:
+      interpreter: ecmascript
+      source: |-
+        var bs = _.bindings;
+        var id = bs._id;
+        var now = parseInt(Date.now()/1000)
+        _.out({"ts":now, "id": id, "did":"stopping"});
+        return _.bindings;
+    branching:
+      branches:
+        - target: stop
+

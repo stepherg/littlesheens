@@ -10,6 +10,26 @@
  * limitations under the License.
  */
 
+function genRandomId(length) { 
+   return Math.random().toString(36).substring(2, length + 2); 
+};
+
+function generateRandomInt(min,max) {
+   min = Math.ceil(min);
+   max = Math.floor(max);
+   return Math.floor(Math.random() * (max - min + 1)) + min;
+};
+
+function generateRandomString(length) {
+   var result = '';
+   var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+   var charactersLength = characters.length;
+   for (var i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+   }
+   return result;
+};
+
 // sandboxedAction wishes to be a function that can evaluate
 // ECMAScript source in a fresh, pristine, sandboxed environment.
 //
@@ -29,31 +49,82 @@ function sandboxedAction(ctx, bs, src) {
    var bs_js = JSON.stringify(bs);
 
    var code = "\n" +
-      "var emitting = [];\n" + 
-      "var env = {\n" + 
+      "var emitting = [];\n" +
+      "var debug_logging = [];\n" +
+      "var env = {\n" +
       "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
-      "  target: function(x) { console.log(x); },\n" + 
-      "  out: function(x) { emitting.push(x); }\n" + 
-      "}\n" + 
-      "\n" + 
+      "  genRandomId: function(length) { return Math.random().toString(36).substring(2, length + 2); },\n" +
+      "  generateRandomInt: function(min,max) {\n" +
+      "      min = Math.ceil(min);\n" +
+      "      max = Math.floor(max);\n" +
+      "      return Math.floor(Math.random() * (max - min + 1)) + min;\n" +
+      "  },\n" +
+      "  generateRandomString: function(length) {\n" +
+      "     var result = '';\n" +
+      "     var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';\n" +
+      "     var charactersLength = characters.length;\n" +
+      "     for (var i = 0; i < length; i++) {\n" +
+      "        result += characters.charAt(Math.floor(Math.random() * charactersLength));\n" +
+      "     }\n" +
+      "     return result;\n" +
+      "     },\n" +
+      "  log: function () {var args = Array.prototype.slice.call(arguments); debug_logging.push.apply(debug_logging, args);},\n" +
+      "  rbus_getValue: function(path) { return env.generateRandomString(10); },\n" +
+      "  out: function(x) { emitting.push(x); }\n" +
+      "}\n" +
+      "\n" +
       "var bs = (function(_) {\n" + src + "\n})(env);\n";
 
    // The following conditional checks for 'safeEval', might have
-   // been defined by https://www.npmjs.com/package/safe-eval.  That
-   // 'safeEval' wants an expression, while the Duktape-based sandbox
-   // just takes a block.
+   // been defined by https://www.npmjs.com/package/safe-eval.  
    if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
-      code += "JSON.stringify({bs: bs, emitted: emitting});\n";
+      //  Duktape-based sandbox just takes a code block.
+      code += "JSON.stringify({bs: bs, debug_logging: debug_logging, emitted: emitting});\n";
    } else {
+      // 'safeEval' wants an expression.  Build a called function
       code = "function() {\n" + code + "\n" +
-         "return JSON.stringify({bs: bs, emitted: emitting});\n" +
+         "return JSON.stringify({bs: bs, debug_logging: debug_logging, emitted: emitting});\n" +
          "}();\n";
    }
 
    try {
-      var result_js = sandbox(code);
+      if (typeof safeEval === 'undefined') { 
+         // Just for duktape
+         var result_js = sandbox(code);
+      } else {
+         // Just for ../nodemodify.sh
+         // map/define functions for sandbox
+         var ctx_fn = {
+            genRandomId: genRandomId,
+            generateRandomInt: generateRandomInt, 
+            generateRandomString: generateRandomString
+         };
+
+         code = "\n" +
+            "var emitting = [];\n" + 
+            "var debug_logging = [];\n" + 
+            "var env = {\n" + 
+            "  bindings: " + bs_js + ",\n" +  // Maybe JSON.parse.
+            "  log: function(...args) { debug_logging.push(...args); },\n" + 
+            "  out: function(x) { emitting.push(x); }\n" + 
+            "}\n" + 
+            "var bs = (function(_) {\n" + src + "\n})(env);\n";
+
+         // 'safeEval' wants an expression.  Build a called function
+         code = "function() {\n" + code + "\n" +
+            "return JSON.stringify({bs: bs, debug_logging: debug_logging, emitted: emitting});\n" +
+            "}();\n";
+
+         //print(code);
+
+         var result_js = sandbox(code, ctx_fn);
+      }
       try {
-         return JSON.parse(result_js);
+         var result = JSON.parse(result_js);
+         for (var i = 0; i < result.debug_logging.length; i++) {
+            print("**SANDBOX**: " + result.debug_logging[i]);
+         }
+         return result;
       } catch (e) {
          throw e + " on result parsing of '" + result_js + "'";
       }
@@ -73,3 +144,32 @@ function sandboxedAction(ctx, bs, src) {
    }
 }
 
+//
+// Single Expression
+//
+function sandboxedExpression(ctx, bs, src) {
+   Times.tick("sandboxExpression");
+
+   try {
+      if (typeof safeEval === 'undefined') { // Just for ../nodemodify.sh
+         // DUKTAPE
+         var bs_js = JSON.stringify(bs);
+         var code_block = "var result= (function(_) {\nreturn _." + src + "\n})(" + bs_js + ");\n";
+         code_block += "JSON.stringify(result);\n";
+         var result_js = sandbox(code_block);
+         return JSON.parse(result_js);
+      } else {
+         // NODE SAFEEVAL
+         return sandbox(src, bs);
+      }
+
+   } catch (e) {
+      print("sandbox statement error", e);
+   } finally {
+      Times.tock("sandboxExpression");
+   }
+}
+
+if (typeof module !== 'undefined') {
+   module.exports = { sandboxedAction, sandboxedExpression };
+}

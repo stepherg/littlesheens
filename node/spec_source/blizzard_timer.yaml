@@ -1,0 +1,217 @@
+# Blizzard timer spec (YAML form) with Ping->Pong gating
+# Flow:
+#  1. Subscribe to timerFired and pong events
+#  2. Schedule initial timer
+#  3. On timerFired: increment iter, send Ping
+#  4. On Ping completion (invoke-response or pong event):
+#       - if iter < max_iters schedule next timer
+#       - else unsubscribe timerFired, pong and shutdown
+# Supports both invoke-response and emitted event completion paths.
+
+name: blizzard_timer
+parsepatterns: true
+nodes:
+  startup:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var base = String(bs._id);
+
+          // Initialize counters and configuration
+          bs.iter = 0;
+          bs.max_iters = (bs.max_iters != null) ? bs.max_iters : 5;
+          bs.delay_ms  = (bs.delay_ms  != null) ? bs.delay_ms  : 2000;
+
+          // Stable IDs
+          bs._schedule_id = base;
+          bs._ping_id     = base + '_ping';
+          bs._unsub_id    = base + '_unsub';
+
+          // Subscriptions
+          var subTimer = {
+            jsonrpc: '2.0',
+            method: 'rpc.Subscribe',
+            id: base + '_sub_timer',
+            params: { provider: 'cpp_provider', event: 'timerFired' }
+          };
+
+          var subPong = {
+            jsonrpc: '2.0',
+            method: 'rpc.Subscribe',
+            id: base + '_sub_pong',
+            params: { provider: 'cpp_provider', event: 'pong' }
+          };
+
+          // First schedule
+          var first = {
+            jsonrpc: '2.0',
+            method: 'rpc.Invoke',
+            id: bs._schedule_id,
+            params: {
+              provider: 'cpp_provider',
+              method: 'Schedule',
+              params: { id: bs._schedule_id, delay_ms: bs.delay_ms }
+            }
+          };
+
+          _.out({
+            did: 'setup',
+            actions: [ subTimer, subPong, first ],
+            config: { max_iters: bs.max_iters, delay_ms: bs.delay_ms }
+          });
+
+          return bs;
+    branching:
+      branches:
+        - target: wait
+  wait:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          if (Object.prototype.hasOwnProperty.call(bs, '??jrpc')) {
+            try {
+              bs._prev_jrpc = bs['??jrpc'];
+            } catch (e) {
+              // ignore
+            }
+            delete bs['??jrpc'];
+          }
+          return bs;
+    branching:
+      type: message
+      branches:
+        - pattern: '{"event":"jrpc-event","jrpc":"??jrpc"}'
+          target: onEvent
+        - pattern: '{"invoke-response":"??resp","to":"*"}'
+          target: onEvent
+  onEvent:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var base = String(bs._id);
+
+          if (!bs._schedule_id) {
+            bs._schedule_id = base;
+          }
+
+          var ev = bs['??jrpc'] || {};
+          var isInvokeResp = (ev['invoke-response'] != null);
+
+          // Extract provider/event name for event notifications
+          var provider = '';
+          var name = '';
+          if (!isInvokeResp) {
+            var method = ev.method || '';
+            provider = (ev.params && ev.params.provider) || ev.provider || '';
+            name = (ev.params && ev.params.event) || ev.event || ev.method || '';
+            if (!provider && typeof method === 'string' && method.indexOf('rpc.Event.') === 0) {
+              var parts = method.split('.');
+              if (parts.length >= 4) {
+                provider = parts[2];
+                name = parts.slice(3).join('.');
+              }
+            }
+          }
+
+          // Case: timer fired => send Ping
+          if (!isInvokeResp && provider === 'cpp_provider' && name === 'timerFired') {
+            bs.iter = (bs.iter || 0) + 1;
+            if (bs.iter > bs.max_iters) {
+              var unsubOverTimer = {
+                jsonrpc: '2.0',
+                method: 'rpc.Unsubscribe',
+                id: bs._unsub_id + '_t',
+                params: { provider: 'cpp_provider', event: 'timerFired' }
+              };
+              var unsubOverPong = {
+                jsonrpc: '2.0',
+                method: 'rpc.Unsubscribe',
+                id: bs._unsub_id + '_p',
+                params: { provider: 'cpp_provider', event: 'pong' }
+              };
+              bs._pending_shutdown = true;
+              _.out({
+                did: 'shutdown',
+                reason: 'over-iter',
+                total: bs.iter,
+                actions: [ unsubOverTimer, unsubOverPong ]
+              });
+              return bs;
+            }
+
+            var ping = {
+              jsonrpc: '2.0',
+              method: 'rpc.Invoke',
+              id: bs._ping_id,
+              params: {
+                provider: 'cpp_provider',
+                method: 'Ping',
+                params: { id: bs._schedule_id }
+              }
+            };
+            bs.awaiting = 'ping';
+            _.out({ did: 'timerFired', iter: bs.iter, awaiting: 'ping', actions: [ ping ] });
+            return bs;
+          }
+
+          // Case: pong completion (either invoke-response for ping OR emitted pong event)
+          var isPongEvent = (!isInvokeResp && provider === 'cpp_provider' && name === 'pong');
+          if ((isInvokeResp && ev.to === bs._ping_id) || isPongEvent) {
+            bs.awaiting = null;
+
+            if (bs.iter < bs.max_iters) {
+              var sched = {
+                jsonrpc: '2.0',
+                method: 'rpc.Invoke',
+                id: bs._schedule_id,
+                params: {
+                  provider: 'cpp_provider',
+                  method: 'Schedule',
+                  params: { id: bs._schedule_id, delay_ms: bs.delay_ms }
+                }
+              };
+              _.out({
+                did: 'pong',
+                iter: bs.iter,
+                via: (isPongEvent ? 'event' : 'invoke-response'),
+                remaining: (bs.max_iters - bs.iter),
+                actions: [ sched ]
+              });
+            } else {
+              var unsubTimer = {
+                jsonrpc: '2.0',
+                method: 'rpc.Unsubscribe',
+                id: bs._unsub_id + '_t',
+                params: { provider: 'cpp_provider', event: 'timerFired' }
+              };
+              var unsubPong = {
+                jsonrpc: '2.0',
+                method: 'rpc.Unsubscribe',
+                id: bs._unsub_id + '_p',
+                params: { provider: 'cpp_provider', event: 'pong' }
+              };
+              bs._pending_shutdown = true;
+              _.out({ did: 'shutdown', total: bs.iter, actions: [ unsubTimer, unsubPong ] });
+            }
+            return bs;
+          }
+
+          _.out({
+            did: 'ignored',
+            provider: provider,
+            name: name,
+            isInvokeResp: isInvokeResp
+          });
+          return bs;
+    branching:
+      branches:
+        - target: wait
+  stop:
+    branching:
+      type: message
+      branches:
+        - pattern: '{"event":"start"}'
+          target: startup

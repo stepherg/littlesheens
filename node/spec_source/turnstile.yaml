@@ -1,0 +1,55 @@
+name: turnstile
+doc: https://en.wikipedia.org/wiki/Finite-state_machine#Example:_coin-operated_turnstile
+parsepatterns: true
+nodes:
+  start:
+    branching:
+      branches:
+        - target: locked
+  locked:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"input":"coin"}
+          target: take_coin
+        - pattern: |
+            {"input":"push"}
+          target: nope
+  nope:
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"go":"away"});
+        return _.bindings;
+    branching:
+      branches:
+        - target: locked
+  take_coin:
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"mmm":"coins"});
+        return _.bindings;
+    branching:
+      branches:
+        - target: unlocked
+  unlocked:
+    branching:
+      type: message
+      branches:
+        - pattern: |
+            {"input":"coin"}
+          target: take_coin
+        - pattern: |
+            {"input":"push"}
+          target: enter
+  enter:
+    action:
+      interpreter: ecmascript
+      source: |-
+        _.out({"go":"through"});
+        return _.bindings;
+    branching:
+      branches:
+        - target: locked
