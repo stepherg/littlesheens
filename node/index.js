@@ -1,5 +1,36 @@
 
 var SHEENS = null;
+// Timestamp + monotonic elapsed helper (gated by LOG_TS)
+const __LOG_TS_ENABLED = (process.env.LOG_TS || '1').toLowerCase() !== '0' && (process.env.LOG_TS || '').toLowerCase() !== 'false';
+let __logStart;
+if (__LOG_TS_ENABLED) {
+  __logStart = process.hrtime.bigint();
+  function __ts() {
+     const iso = new Date().toISOString();
+     const diffNs = Number(process.hrtime.bigint() - __logStart);
+     const secs = (diffNs / 1e9).toFixed(6); // microsecond precision
+     return iso + ' +' + secs + 's';
+  }
+  const __origConsole = {
+     log: console.log.bind(console),
+     error: console.error.bind(console),
+     warn: console.warn.bind(console),
+     info: console.info.bind(console),
+     debug: console.debug ? console.debug.bind(console) : console.log.bind(console)
+  };
+  ['log','error','warn','info','debug'].forEach(fn => {
+     const orig = __origConsole[fn];
+     console[fn] = function () {
+        if (arguments.length === 0) return orig();
+        const first = arguments[0];
+        const rest = Array.prototype.slice.call(arguments, 1);
+        if (typeof first === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(first)) {
+           return orig.apply(console, arguments); // already tagged
+        }
+        orig.apply(console, [__ts(), '-', first, ...rest]);
+     };
+  });
+}
 try {
    const prof = require('../js/prof');
    const step = require('../js/step');
@@ -7,7 +38,7 @@ try {
    global.safeEval = safeEval;
    global.sandbox = (code, ctx) => safeEval(code, ctx || {});
    global.Times = prof;
-   global.print = console.log.bind(console);
+   global.print = function(){ console.log.apply(console, arguments); };
    global.match = require('../js/match');
    const sandboxMod = require('../js/sandbox');
    global.sandboxedAction = sandboxMod.sandboxedAction || global.sandboxedAction;
@@ -168,6 +199,51 @@ try {
 const ENV_MAX_ITERS = process.env.MAX_ITERS ? parseInt(process.env.MAX_ITERS, 10) : undefined;
 const ENV_DELAY_MS = process.env.DELAY_MS ? parseInt(process.env.DELAY_MS, 10) : undefined;
 let baseBindings = {_id: id, timers: Object.assign({}, timers)};
+// Stress spec specific environment overrides
+if (SPEC_NAME === 'blizzard_timer_stress') {
+   function intEnv(name, def) {
+      if (process.env[name] == null) return def;
+      const v = parseInt(process.env[name], 10);
+      return isNaN(v) ? def : v;
+   }
+   function boolEnv(name, def) {
+      if (process.env[name] == null) return def;
+      const val = process.env[name].toLowerCase();
+      return !(val === '0' || val === 'false' || val === 'no');
+   }
+   baseBindings.concurrency = intEnv('CONCURRENCY', 5);
+   baseBindings.base_delay_ms = intEnv('BASE_DELAY_MS', 200);
+   baseBindings.jitter_ms = intEnv('JITTER_MS', 50);
+   baseBindings.max_iters_per_timer = intEnv('MAX_ITERS_PER_TIMER', 50);
+   baseBindings.require_pong_event = boolEnv('REQUIRE_PONG_EVENT', true);
+   if (process.env.SEED != null) {
+      baseBindings.seed = parseInt(process.env.SEED, 10) || 1;
+   }
+   // Optional periodic stats dump interval (ms)
+   const STRESS_DUMP_MS = intEnv('STRESS_DUMP_MS', 5000);
+   if (STRESS_DUMP_MS > 0) {
+      setInterval(() => {
+         try {
+            const c = JSON.parse(crew_js);
+            const mid = Object.keys(c.machines)[0];
+            if (!mid) return;
+            const bs = c.machines[mid].bs;
+            if (!bs || bs.timers == null) return;
+            const timers = bs.timers;
+            let active = 0, done = 0;
+            const stats = {};
+            for (const k in timers) {
+               const t = timers[k];
+               if (t.done) done++; else active++;
+               stats[k] = {iter: t.iter, done: !!t.done, outstanding: !!t.outstanding};
+            }
+            console.log('[stress-progress]', JSON.stringify({active, done, total: active+done, done_count: bs.done_count, total_pings: bs.total_pings, total_pongs: bs.total_pongs, sample: stats}));
+         } catch (e) {
+            console.warn('Periodic stress dump failed:', e.message);
+         }
+      }, STRESS_DUMP_MS).unref();
+   }
+}
 if (!isNaN(ENV_MAX_ITERS) && ENV_MAX_ITERS >= 0) {
    baseBindings.max_iters = ENV_MAX_ITERS;
 }
@@ -183,7 +259,9 @@ console.log(crew_js);
 const onOpen = () => {
    const crewB = {id: 'blizzard-provider-demo', machines: {}};
    const id1 = genRandomId(6);
-   crewB.machines[id1] = {spec: specFile, node: 'stop', bs: {_id: id1, count: 0}};
+   // Merge previously prepared baseBindings so stress-specific overrides propagate
+   const merged = Object.assign({}, baseBindings, {_id: id1});
+   crewB.machines[id1] = {spec: specFile, node: 'stop', bs: merged};
    crew_js = JSON.stringify(crewB);
    crew_js = process_event(crew_js, {event: 'start'});
 };

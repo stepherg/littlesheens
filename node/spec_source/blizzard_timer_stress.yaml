@@ -1,0 +1,412 @@
+# Blizzard Timer Stress Spec
+# Purpose: Create concurrent Schedule -> timerFired -> Ping -> pong chains to stress
+# the Blizzard transport, provider implementation, and state machine runtime.
+#
+# Strategy:
+#  * Subscribe to timerFired and pong events (single subscription each).
+#  * Launch N independent logical timers (concurrency) all sharing the same
+#    event subscription channels (provider multiplexing test).
+#  * Each logical timer maintains stats: iterations, last fire timestamp, interval
+#    accumulation, min/max observed interval, and outstanding ping state.
+#  * On timerFired: (a) attribute the event to a logical timer id by payload.id
+#    (b) update stats & compute interval metrics (c) send Ping referencing the
+#    schedule id (gating: don't schedule next until pong seen).
+#  * On pong (event or invoke-response, depending on configuration): mark ping
+#    complete then reschedule with jitter around a base delay.
+#  * When a timer reaches its per-timer iteration cap, it is marked done and no
+#    further schedules are issued for it. When ALL timers are done, unsubscribe
+#    and shutdown.
+#
+# Configurable Bindings (can be passed in initial message bindings):
+#  concurrency            : number of logical timers (default 5)
+#  base_delay_ms          : central delay for schedules (default 200)
+#  jitter_ms              : max absolute jitter added/subtracted (default 50)
+#  max_iters_per_timer    : iteration cap per logical timer (default 50)
+#  require_pong_event     : if true, only accept emitted pong events as completion
+#                            if false, accept either invoke-response OR event
+#  seed                   : optional numeric seed for pseudo-random jitter (LCG)
+#
+# Outputs (via _.out):
+#  did: 'setup'            -> initial configuration & first schedules
+#  did: 'fire'             -> when handling timerFired (before Ping)
+#  did: 'pong'             -> when pong processed & rescheduling (per timer)
+#  did: 'timer_done'       -> a logical timer finished its iteration quota
+#  did: 'shutdown'         -> all timers complete; includes aggregate stats
+#  did: 'ignored'          -> unhandled messages surfaced for transparency
+#
+# Stats Maintained:
+#  timers[id]: {
+#     id, iter, max_iters, outstanding, last_fire_ms,
+#     total_interval_ms, min_interval_ms, max_interval_ms
+#  }
+# Global:
+#  done_count, total_pings, total_pongs, random_state
+#
+# NOTE: This spec purposefully performs modest computation per event to reveal
+# potential race / ordering / throughput issues under concurrency.
+
+name: blizzard_timer_stress
+parsepatterns: true
+nodes:
+  startup:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var base = String(bs._id || 'stress');
+
+          // Normalize configuration with defaults.
+          bs.concurrency         = (bs.concurrency != null)         ? bs.concurrency         : 5;
+          bs.base_delay_ms       = (bs.base_delay_ms != null)       ? bs.base_delay_ms       : 200;
+          bs.jitter_ms           = (bs.jitter_ms != null)           ? bs.jitter_ms           : 50;
+          bs.max_iters_per_timer = (bs.max_iters_per_timer != null) ? bs.max_iters_per_timer : 50;
+          bs.require_pong_event  = (bs.require_pong_event != null)  ? bs.require_pong_event  : true;
+
+          // Seeded or unseeded RNG (LCG for determinism when seed provided).
+          if (bs.seed != null) {
+            var s = (Number(bs.seed) >>> 0) || 1; // force to uint32, avoid zero
+            bs.random_state = s;
+            bs._rand = function() {
+              bs.random_state = (1664525 * bs.random_state + 1013904223) >>> 0;
+              return bs.random_state / 4294967296; // 2^32
+            };
+          } else {
+            bs._rand = function() { return Math.random(); };
+          }
+
+          // Initialize global counters & timer records
+          bs.timers       = {};
+          bs.done_count   = 0;
+          bs.total_pings  = 0;
+          bs.total_pongs  = 0;
+
+          for (var i = 0; i < bs.concurrency; i++) {
+            var tid = base + '_t' + i;
+            bs.timers[tid] = {
+              id: tid,
+              iter: 0,
+              max_iters: bs.max_iters_per_timer,
+              outstanding: false,
+              last_fire_ms: null,
+              total_interval_ms: 0,
+              min_interval_ms: null,
+              max_interval_ms: null
+            };
+          }
+
+          var subTimer = {
+            jsonrpc: '2.0',
+            method: 'rpc.Subscribe',
+            id: base + '_sub_timer',
+            params: { provider: 'cpp_provider', event: 'timerFired' }
+          };
+
+          var subPong = {
+            jsonrpc: '2.0',
+            method: 'rpc.Subscribe',
+            id: base + '_sub_pong',
+            params: { provider: 'cpp_provider', event: 'pong' }
+          };
+
+          // Defensive: ensure _rand remains callable.
+          if (typeof bs._rand !== 'function') {
+            bs._rand = function() { return Math.random(); };
+            _.out({ did: 'recover_rand', note: 'Injected default _rand function' });
+          }
+
+          function nextDelay() {
+            var jitter = 0;
+            if (bs.jitter_ms > 0) {
+              var r = (bs._rand() * 2) - 1; // [-1, 1)
+              jitter = Math.round(r * bs.jitter_ms);
+            }
+            var d = bs.base_delay_ms + jitter;
+            if (d < 1) d = 1;
+            return d;
+          }
+
+          var actions = [subTimer, subPong];
+          for (var k in bs.timers) {
+            actions.push({
+              jsonrpc: '2.0',
+              method: 'rpc.Invoke',
+              id: k,
+              params: {
+                provider: 'cpp_provider',
+                method: 'Schedule',
+                params: { id: k, delay_ms: nextDelay() }
+              }
+            });
+          }
+
+          _.out({
+            did: 'setup',
+            actions: actions,
+            config: {
+              concurrency: bs.concurrency,
+              base_delay_ms: bs.base_delay_ms,
+              jitter_ms: bs.jitter_ms,
+              max_iters_per_timer: bs.max_iters_per_timer,
+              require_pong_event: bs.require_pong_event
+            }
+          });
+          return bs;
+    branching:
+      branches:
+        - target: wait
+  wait:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          if (Object.prototype.hasOwnProperty.call(bs, '??jrpc')) {
+            try { bs._prev_jrpc = bs['??jrpc']; } catch (e) { /* ignore */ }
+            delete bs['??jrpc'];
+          }
+          return bs;
+    branching:
+      type: message
+      branches:
+        - pattern: '{"event":"jrpc-event","jrpc":"??jrpc"}'
+          target: onEvent
+        - pattern: '{"invoke-response":"??resp","to":"*"}'
+          target: onEvent
+  onEvent:
+    actions:
+      - interpreter: ecmascript
+        source: |-
+          var bs = _.bindings;
+          var ev = bs['??jrpc'] || {};
+          var isInvokeResp = (ev['invoke-response'] != null);
+          var provider = '';
+            var name = '';
+
+          // Recreate RNG function after serialization (functions are dropped).
+          if (typeof bs._rand !== 'function') {
+            if (bs.random_state != null) {
+              bs._rand = function() {
+                bs.random_state = (1664525 * bs.random_state + 1013904223) >>> 0;
+                return bs.random_state / 4294967296;
+              };
+            } else {
+              bs._rand = function() { return Math.random(); };
+            }
+          }
+
+          var base = String(bs._id || 'stress');
+
+          if (!isInvokeResp) {
+            var method = ev.method || '';
+            provider = (ev.params && ev.params.provider) || ev.provider || '';
+            name = (ev.params && ev.params.event) || ev.event || ev.method || '';
+            if (!provider && typeof method === 'string' && method.indexOf('rpc.Event.') === 0) {
+              var parts = method.split('.');
+              if (parts.length >= 4) {
+                provider = parts[2];
+                name = parts.slice(3).join('.');
+              }
+            }
+          }
+
+          function isPongCompletion(evObj, isResp) {
+            if (bs.require_pong_event) {
+              return (!isResp && provider === 'cpp_provider' && name === 'pong');
+            }
+            var eventPong = (!isResp && provider === 'cpp_provider' && name === 'pong');
+            var respPong = (isResp && evObj.to && evObj.to.indexOf('_ping') > -1);
+            return eventPong || respPong;
+          }
+
+          // Handle timerFired event -> send Ping (gated by outstanding flag)
+          if (!isInvokeResp && provider === 'cpp_provider' && name === 'timerFired') {
+            var payload = (ev.params && ev.params.value) || ev.value || ev.params || {};
+            var tid = payload.id || payload.timer_id || payload.schedule_id;
+            var t = bs.timers && bs.timers[tid];
+            if (t) {
+              var now = Date.now();
+              if (t.last_fire_ms != null) {
+                var interval = now - t.last_fire_ms;
+                t.total_interval_ms += interval;
+                if (t.min_interval_ms == null || interval < t.min_interval_ms) t.min_interval_ms = interval;
+                if (t.max_interval_ms == null || interval > t.max_interval_ms) t.max_interval_ms = interval;
+              }
+              t.last_fire_ms = now;
+              t.iter++;
+
+              if (t.iter > t.max_iters) {
+                if (!t.done) {
+                  t.done = true;
+                  bs.done_count++;
+                  _.out({ did: 'timer_done', id: t.id, iter: t.iter, done_count: bs.done_count });
+                }
+              } else {
+                if (t.outstanding) {
+                  _.out({ did: 'fire', id: t.id, iter: t.iter, warning: 'timerFired while ping outstanding' });
+                }
+                var pingId = t.id + '_ping';
+                t.outstanding = true;
+                bs.total_pings++;
+                var ping = {
+                  jsonrpc: '2.0',
+                  method: 'rpc.Invoke',
+                  id: pingId,
+                  params: { provider: 'cpp_provider', method: 'Ping', params: { id: t.id } }
+                };
+                _.out({ did: 'fire', id: t.id, iter: t.iter, actions: [ping] });
+              }
+
+              if (bs.done_count === bs.concurrency) {
+                if (!bs._summary_emitted) {
+                  bs._summary_emitted = true;
+                  var unsubTimer = {
+                    jsonrpc: '2.0', method: 'rpc.Unsubscribe', id: base + '_unsub_t',
+                    params: { provider: 'cpp_provider', event: 'timerFired' }
+                  };
+                  var unsubPong = {
+                    jsonrpc: '2.0', method: 'rpc.Unsubscribe', id: base + '_unsub_p',
+                    params: { provider: 'cpp_provider', event: 'pong' }
+                  };
+                  var agg = { total_pings: bs.total_pings, total_pongs: bs.total_pongs, timers: {} };
+                  var outstandingList = [];
+                  for (var kk in bs.timers) {
+                    var tt = bs.timers[kk];
+                    agg.timers[kk] = {
+                      iter: tt.iter,
+                      avg_interval_ms: (tt.iter > 1) ? (tt.total_interval_ms / (tt.iter - 1)) : null,
+                      min_interval_ms: tt.min_interval_ms,
+                      max_interval_ms: tt.max_interval_ms,
+                      outstanding: !!tt.outstanding,
+                      done: !!tt.done
+                    };
+                    if (tt.outstanding) outstandingList.push(tt.id);
+                  }
+                  _.out({ did: 'shutdown', reason: 'all_done_on_fire', actions: [unsubTimer, unsubPong], stats: agg });
+                  _.out({
+                    did: 'summary',
+                    reason: 'all_done_on_fire',
+                    totals: {
+                      concurrency: bs.concurrency,
+                      total_pings: bs.total_pings,
+                      total_pongs: bs.total_pongs,
+                      expected_pongs: bs.total_pings
+                    },
+                    validations: {
+                      all_timers_done: (bs.done_count === bs.concurrency),
+                      no_outstanding_pings: outstandingList.length === 0,
+                      all_pongs_received: (bs.total_pings === bs.total_pongs)
+                    },
+                    outstanding: outstandingList,
+                    config: {
+                      base_delay_ms: bs.base_delay_ms,
+                      jitter_ms: bs.jitter_ms,
+                      max_iters_per_timer: bs.max_iters_per_timer,
+                      require_pong_event: bs.require_pong_event,
+                      seed: bs.seed
+                    }
+                  });
+                }
+              }
+              return bs;
+            }
+          }
+
+          // Handle pong completion (event or invoke-response depending on config)
+          if (isPongCompletion(ev, isInvokeResp)) {
+            var pongTimerId = null;
+            if (!isInvokeResp) {
+              var val = (ev.params && ev.params.value) || ev.value || ev.params || {};
+              pongTimerId = val.id || val.timer_id || val.schedule_id || null;
+            } else if (ev.to) {
+              pongTimerId = ev.to.replace(/_ping$/, '');
+            }
+
+            var t2 = pongTimerId && bs.timers && bs.timers[pongTimerId];
+            if (t2 && !t2.done && t2.outstanding) {
+              t2.outstanding = false;
+              bs.total_pongs++;
+
+              if (t2.iter < t2.max_iters) {
+                var jitter = 0;
+                if (bs.jitter_ms > 0) {
+                  var r2 = (bs._rand() * 2) - 1;
+                  jitter = Math.round(r2 * bs.jitter_ms);
+                }
+                var delay = bs.base_delay_ms + jitter;
+                if (delay < 1) delay = 1;
+                var sched = {
+                  jsonrpc: '2.0', method: 'rpc.Invoke', id: t2.id,
+                  params: { provider: 'cpp_provider', method: 'Schedule', params: { id: t2.id, delay_ms: delay } }
+                };
+                _.out({ did: 'pong', id: t2.id, iter: t2.iter, delay_ms: delay, via: (isInvokeResp ? 'invoke-response' : 'event'), actions: [sched] });
+              } else if (!t2.done) {
+                t2.done = true;
+                bs.done_count++;
+                _.out({ did: 'timer_done', id: t2.id, iter: t2.iter, done_count: bs.done_count });
+              }
+
+              if (bs.done_count === bs.concurrency) {
+                if (!bs._summary_emitted) {
+                  bs._summary_emitted = true;
+                  var unsubTimer2 = {
+                    jsonrpc: '2.0', method: 'rpc.Unsubscribe', id: base + '_unsub_t',
+                    params: { provider: 'cpp_provider', event: 'timerFired' }
+                  };
+                  var unsubPong2 = {
+                    jsonrpc: '2.0', method: 'rpc.Unsubscribe', id: base + '_unsub_p',
+                    params: { provider: 'cpp_provider', event: 'pong' }
+                  };
+                  var agg2 = { total_pings: bs.total_pings, total_pongs: bs.total_pongs, timers: {} };
+                  var outstandingList2 = [];
+                  for (var k2 in bs.timers) {
+                    var t3 = bs.timers[k2];
+                    agg2.timers[k2] = {
+                      iter: t3.iter,
+                      avg_interval_ms: (t3.iter > 1) ? (t3.total_interval_ms / (t3.iter - 1)) : null,
+                      min_interval_ms: t3.min_interval_ms,
+                      max_interval_ms: t3.max_interval_ms,
+                      outstanding: !!t3.outstanding,
+                      done: !!t3.done
+                    };
+                    if (t3.outstanding) outstandingList2.push(t3.id);
+                  }
+                  _.out({ did: 'shutdown', reason: 'all_done_on_pong', actions: [unsubTimer2, unsubPong2], stats: agg2 });
+                  _.out({
+                    did: 'summary',
+                    reason: 'all_done_on_pong',
+                    totals: {
+                      concurrency: bs.concurrency,
+                      total_pings: bs.total_pings,
+                      total_pongs: bs.total_pongs,
+                      expected_pongs: bs.total_pings
+                    },
+                    validations: {
+                      all_timers_done: (bs.done_count === bs.concurrency),
+                      no_outstanding_pings: outstandingList2.length === 0,
+                      all_pongs_received: (bs.total_pings === bs.total_pongs)
+                    },
+                    outstanding: outstandingList2,
+                    config: {
+                      base_delay_ms: bs.base_delay_ms,
+                      jitter_ms: bs.jitter_ms,
+                      max_iters_per_timer: bs.max_iters_per_timer,
+                      require_pong_event: bs.require_pong_event,
+                      seed: bs.seed
+                    }
+                  });
+                }
+              }
+              return bs;
+            }
+          }
+
+          _.out({ did: 'ignored', isInvokeResp: isInvokeResp, name: name, provider: provider });
+          return bs;
+    branching:
+      branches:
+        - target: wait
+  stop:
+    branching:
+      type: message
+      branches:
+        - pattern: '{"event":"start"}'
+          target: startup
