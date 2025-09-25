@@ -26,10 +26,8 @@ if (!SHEENS) {
 
 const fs = require('fs');
 const {BlizzardWsClient} = require('./src/blizzard_ws_client');
-const useBlizzard = !!process.env.BLIZZARD_WS_URL;
-const ws = useBlizzard
-   ? new BlizzardWsClient(process.env.BLIZZARD_WS_URL, {token: process.env.BLIZZARD_TOKEN})
-   : new (require('ws'))(process.env.LOCAL_WS_URL || `ws://localhost:${process.env.LOCAL_WS_PORT || 8820}`);
+const WS_URL = process.env.BLIZZARD_WS_URL || 'ws://localhost:8820';
+const ws = new BlizzardWsClient(WS_URL, {token: process.env.BLIZZARD_TOKEN});
 
 const ENABLE_VERBOSE = !!process.env.VERBOSE;
 function vLog() {
@@ -183,12 +181,10 @@ let crew_js = JSON.stringify(crew);
 console.log(crew_js);
 
 const onOpen = () => {
-   if (useBlizzard) {
-      const crewB = {id: 'blizzard-provider-demo', machines: {}};
-      const id1 = genRandomId(6);
-      crewB.machines[id1] = {spec: specFile, node: 'stop', bs: {_id: id1, count: 0}};
-      crew_js = JSON.stringify(crewB);
-   }
+   const crewB = {id: 'blizzard-provider-demo', machines: {}};
+   const id1 = genRandomId(6);
+   crewB.machines[id1] = {spec: specFile, node: 'stop', bs: {_id: id1, count: 0}};
+   crew_js = JSON.stringify(crewB);
    crew_js = process_event(crew_js, {event: 'start'});
 };
 
